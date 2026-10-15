@@ -1,7 +1,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, ImageBackground, Pressable, RefreshControl,
+  ActivityIndicator, Alert, Image, ImageBackground, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, View, useWindowDimensions,
 } from 'react-native';
 import Storage from 'expo-sqlite/kv-store';
@@ -92,7 +92,7 @@ function greetingFor(hour: number) {
   return hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 }
 function preferredName(profileName: string, username: string, metadataName: string, email: string) {
-  const local = email.split('@')[0].toLowerCase();
+  const local = (email.split('@')[0] ?? '').toLowerCase();
   const candidates = [profileName, metadataName, username];
   const name = candidates.find(value => value.trim() && !value.includes('@') && value.toLowerCase() !== local);
   return name ? name.trim().split(/\s+/)[0] : '';
@@ -100,13 +100,20 @@ function preferredName(profileName: string, username: string, metadataName: stri
 function daysUntil(value: string) {
   return Math.max(0, Math.ceil((new Date(value).getTime() - Date.now()) / 86400000));
 }
-function upcomingTrip(trips: MemberTrip[]) {
-  const now = Date.now();
-  return trips.filter(trip => trip.adventures
-    && ['paid', 'held', 'payment_pending'].includes(trip.status)
-    && trip.adventures.status !== 'cancelled'
-    && Number.isFinite(Date.parse(trip.adventures.starts_at))
-    && Date.parse(trip.adventures.starts_at) >= now)
+function activeBooking(trip: MemberTrip, now: number) {
+  if (!trip.adventures || trip.adventures.status === 'cancelled') return false;
+  const start = Date.parse(trip.adventures.starts_at);
+  if (!Number.isFinite(start) || start < now) return false;
+  if (trip.status === 'paid') return true;
+  if (trip.status !== 'held' && trip.status !== 'payment_pending') return false;
+  const expiry = trip.hold_expires_at ? Date.parse(trip.hold_expires_at) : NaN;
+  // A held booking only counts while its hold is known to be valid.
+  // An unexpired payment_pending record may not have a hold deadline.
+  if (trip.status === 'held') return Number.isFinite(expiry) && expiry > now;
+  return !trip.hold_expires_at || (Number.isFinite(expiry) && expiry > now);
+}
+function upcomingTrip(trips: MemberTrip[], now: number) {
+  return trips.filter(trip => activeBooking(trip, now))
     .sort((a, b) => Date.parse(a.adventures!.starts_at) - Date.parse(b.adventures!.starts_at))[0] ?? null;
 }
 function sectionKey(userId: string, mode: string) {
@@ -166,7 +173,11 @@ export default function GoHome() {
     const target = index + direction;
     if (target < 0 || target >= sections.length) return;
     const next = [...sections];
-    [next[index], next[target]] = [next[target], next[index]];
+    const current = next[index];
+    const neighbor = next[target];
+    if (!current || !neighbor) return;
+    next[index] = neighbor;
+    next[target] = current;
     setHomeSections(next);
   }
   const load = useCallback(async (refresh = false) => {
@@ -212,7 +223,7 @@ export default function GoHome() {
     session?.user.email || '',
   );
   const myItems = useMemo(() => items.filter(item => item.mode === mode), [items, mode]);
-  const futureTrips = useMemo(() => upcomingTrip(trips), [trips]);
+  const futureTrips = useMemo(() => upcomingTrip(trips, now), [trips, now]);
   const liveTrip = trips.find(trip => trip.status === 'paid' && trip.adventures?.status !== 'cancelled'
     && trip.adventures && Date.parse(trip.adventures.starts_at) <= now
     && Date.parse(trip.adventures.ends_at) >= now) ?? null;
@@ -247,31 +258,24 @@ export default function GoHome() {
   function sectionContent(section: HomeSection) {
     if (section === 'circle') return <View key="circle" style={styles.sectionBlock}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Your circle</Text>
+        <Text style={styles.sectionTitle}>From your circle</Text>
         <Pressable accessibilityRole="button" onPress={() => router.push('/communities')}>
-          <Text style={styles.seeAll}>Communities →</Text>
+          <Text style={styles.seeAll}>See all →</Text>
         </Pressable>
       </View>
-      <Pressable accessibilityRole="button" style={[styles.circleCard, { backgroundColor: primary }]} onPress={() => router.push('/communities')}>
-        <View style={styles.circleHeading}>
-          <View style={[styles.circleIcon, { backgroundColor: mode === 'nature' ? '#29553E' : '#483269' }]}>
-            <AppIcon name="community" size={24} color={accent}/>
-          </View>
-          <View style={styles.flex}>
-            <Text style={styles.lightEyebrow}>PEOPLE MAKE THE EXPERIENCE</Text>
-            <Text style={styles.circleTitle}>{mode === 'nature' ? 'Find your people outside.' : 'Find your people after dark.'}</Text>
-          </View>
-        </View>
-        <Text style={styles.circleBody}>{groups.length ? 'You belong to ' + groups.length + (groups.length === 1 ? ' community.' : ' communities.') + ' Catch up with your people.' : 'Find a community, meet your people, and see the stories they share.'}</Text>
-        <Text style={[styles.circleAction, { color: accent }]}>See your communities  →</Text>
-      </Pressable>
-      {posts.map(post => <Pressable key={post.id} accessibilityRole="button" style={styles.pulseCard}
+      {posts.length ? posts.map(post => <Pressable key={post.id} accessibilityRole="button" style={styles.pulseCard}
         onPress={() => post.group_id ? router.push({ pathname: '/groups/[id]', params: { id: post.group_id } }) : router.push('/communities')}>
-        <View style={styles.pulseIcon}><AppIcon name={post.post_type === 'photo' ? 'photos' : 'message'} color={primary} size={19}/></View>
+        {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.pulsePhoto}/> :
+          <View style={styles.pulseIcon}><AppIcon name={post.post_type === 'photo' ? 'photos' : 'message'} color={primary} size={19}/></View>}
         <View style={styles.flex}><Text style={styles.pulseAuthor}>{post.author_name || 'Community member'}</Text>
           <Text style={styles.pulseBody} numberOfLines={2}>{post.body || (post.post_type === 'photo' ? 'Shared a photo with the community.' : 'Shared an update.')}</Text></View>
         <AppIcon name="chevron-forward" color={MUTED} size={17}/>
-      </Pressable>)}
+      </Pressable>) : <Pressable accessibilityRole="button" style={styles.pulseEmpty} onPress={() => router.push('/communities')}>
+        <AppIcon name="photos" color={primary} size={25}/>
+        <View style={styles.flex}><Text style={styles.pulseAuthor}>Your people, your stories</Text>
+          <Text style={styles.pulseBody}>Explore groups and stories shared by the community.</Text></View>
+        <AppIcon name="chevron-forward" color={MUTED} size={18}/>
+      </Pressable>}
     </View>;
     if (section === 'trail') return <View key="trail" style={styles.sectionBlock}>
       <Text style={styles.sectionTitle}>{mode === 'nature' ? 'Your story so far' : 'Your plans & memories'}</Text>
@@ -285,7 +289,7 @@ export default function GoHome() {
         </Pressable>
         <Pressable accessibilityRole="button" style={[styles.miniTile, styles.planTile]} onPress={() => router.push('/member/trips')}>
           <AppIcon name="calendar" color="#614A79" size={25}/>
-          <Text style={styles.miniNumber}>{session ? trips.filter(trip => trip.adventures && Date.parse(trip.adventures.starts_at) >= now && !['cancelled', 'refunded', 'expired'].includes(trip.status) && trip.adventures.status !== 'cancelled').length : '—'}</Text>
+          <Text style={styles.miniNumber}>{session ? trips.filter(trip => activeBooking(trip, now)).length : '—'}</Text>
           <Text style={styles.miniHeading}>Your plans</Text>
           <Text style={styles.miniBody}>Upcoming reservations and experiences</Text>
           <Text style={styles.miniAction}>See your plans →</Text>
@@ -346,7 +350,7 @@ export default function GoHome() {
       <View style={styles.flex}>
         <Text style={styles.eyebrow}>GO MELANATED  /  YOUR TRAILHEAD</Text>
         <Text style={styles.greeting}>{greetingFor(new Date(now).getHours()) + (memberName ? ', ' + memberName : '') + '.'}</Text>
-        <Text style={styles.greetingSub}>{actionTrip ? 'Something to look forward to.' : 'Where will your next story begin?'}</Text>
+        {!actionTrip && <Text style={styles.greetingSub}>Where will your next story begin?</Text>}
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Your profile" onPress={() => router.push('/member/profile')} style={styles.profileButton}>
         <AppIcon name="profile" color={INK} size={22}/>
@@ -362,10 +366,10 @@ export default function GoHome() {
       <ImageBackground source={actionTrip?.hero_image_url ? { uri: actionTrip.hero_image_url } : mode === 'nature' ? DEFAULT_NATURE : DEFAULT_NIGHT}
         style={styles.heroImage} imageStyle={styles.heroCorners}>
         <View style={[styles.heroShade, { backgroundColor: mode === 'nature' ? 'rgba(6,25,16,0.77)' : 'rgba(24,12,47,0.79)' }]}>
-          <Text style={[styles.heroLabel, { color: accent }]}>{isLive ? 'YOUR ADVENTURE IS LIVE' : hasBooking ? isPending ? 'ACTION NEEDED · YOUR RESERVATION' : 'YOUR NEXT ADVENTURE' : mode === 'nature' ? 'LET’S GO OUTSIDE' : 'LET’S GO OUT'}</Text>
-          <Text style={styles.heroTitle}>{heroHeading}</Text>
+          <Text style={[styles.heroLabel, { color: accent }]}>{isLive ? 'YOUR ADVENTURE IS LIVE' : hasBooking ? isPending ? 'RESERVATION TO REVIEW' : 'YOUR NEXT ADVENTURE' : mode === 'nature' ? 'LET’S GO OUTSIDE' : 'LET’S GO OUT'}</Text>
+          <Text style={styles.heroTitle} numberOfLines={2}>{heroHeading}</Text>
           <Text style={styles.heroBody}>{heroDescription}</Text>
-          {hasBooking && <Text style={[styles.heroStatus, { color: accent }]}>{isLive ? 'Your experience is underway' : isPending ? 'Complete your reservation' : days === 0 ? 'Coming up today' : days === 1 ? 'Tomorrow' : days + ' days to go'}</Text>}
+          {hasBooking && <Text style={[styles.heroStatus, { color: accent }]}>{isLive ? 'Happening now' : isPending ? 'Check your booking status' : days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : days + ' days to go'}</Text>}
           <Pressable accessibilityRole="button" onPress={() => hasBooking ? router.push({ pathname: '/adventures/[id]', params: { id: actionTrip!.id } }) : goDiscover(mode)}
             style={[styles.heroButton, { backgroundColor: accent }]}>
             <Text style={styles.heroButtonText}>{isLive ? 'Open your adventure' : hasBooking ? isPending ? 'Review reservation' : 'View your adventure' : 'Find your next experience'}  →</Text>
@@ -373,12 +377,7 @@ export default function GoHome() {
         </View>
       </ImageBackground>
     </View>
-    {hasBooking && <Pressable accessibilityRole="button" style={styles.actionStrip} onPress={() => isLive ? router.push({ pathname: '/adventures/[id]', params: { id: actionTrip!.id } }) : router.push('/member/trips')}>
-      <AppIcon name={isPending ? 'warning' : isLive ? 'map' : 'check'} color={isPending ? '#875C28' : '#1F6842'} size={20}/>
-      <View style={styles.flex}><Text style={styles.actionTitle}>{isLive ? 'Adventure mode is ready' : isPending ? 'Your reservation needs attention' : 'Your adventure is on your calendar'}</Text>
-        <Text style={styles.actionCopy}>{isLive ? 'Open the adventure for schedules, arrival details, and check-in.' : isPending ? 'Check your booking status and any required steps.' : 'Find booking details and prepare for the day.'}</Text></View>
-      <AppIcon name="chevron-forward" color="#52665B" size={18}/>
-    </Pressable>}
+    
     {loading && <ActivityIndicator color={primary} style={styles.loading}/>}
     {error && <Text style={styles.error}>{error}</Text>}
     <View style={styles.personalizeRow}><Text style={styles.homeLabel}>YOUR WORLD</Text>
@@ -386,6 +385,22 @@ export default function GoHome() {
         onPress={() => setEditing(current => !current)} style={styles.editButton}>
         <AppIcon name={editing ? 'check' : 'settings'} color={primary} size={15}/>
         <Text style={styles.editText}>{editing ? 'Done' : 'Customize'}</Text>
+      </Pressable>
+    </View>
+    <View style={styles.quickTiles}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Open your communities"
+        style={[styles.quickTile, { backgroundColor: primary }]} onPress={() => router.push('/communities')}>
+        <View style={styles.quickTileIcon}><AppIcon name="community" size={23} color={accent}/></View>
+        <Text style={styles.quickTileTitle}>Your Circle</Text>
+        <Text style={styles.quickTileCopy} numberOfLines={2}>{groups.length ? groups.length + (groups.length === 1 ? ' community joined' : ' communities joined') : 'Find your people'}</Text>
+        <Text style={[styles.quickTileLink, { color: accent }]}>Connect →</Text>
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Open your Trail and memories"
+        style={[styles.quickTile, styles.quickTrail]} onPress={() => router.push('/member/journey')}>
+        <View style={styles.quickTileIconLight}><AppIcon name="trail" size={23} color="#46603D"/></View>
+        <Text style={[styles.quickTileTitle, styles.quickTrailTitle]}>Your Trail</Text>
+        <Text style={[styles.quickTileCopy, styles.quickTrailCopy]} numberOfLines={2}>{session && journey.length ? journey.length + (journey.length === 1 ? ' adventure remembered' : ' adventures remembered') : 'Your story starts here'}</Text>
+        <Text style={styles.quickTrailLink}>Your story →</Text>
       </Pressable>
     </View>
     {editing && <View style={styles.editor}>
@@ -422,31 +437,42 @@ export default function GoHome() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F7F8F4' },
   nightScreen: { backgroundColor: '#F6F3F9' },
-  content: { paddingHorizontal: 18, paddingTop: 19, paddingBottom: 32, width: '100%', maxWidth: 970, alignSelf: 'center' },
-  flex: { flex: 1 }, greetingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 18, gap: 10 },
+  content: { paddingHorizontal: 16, paddingTop: 11, paddingBottom: 32, width: '100%', maxWidth: 970, alignSelf: 'center' },
+  flex: { flex: 1 }, greetingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 10 },
   eyebrow: { fontWeight: '900', fontSize: 10, color: '#427B59', letterSpacing: 1.4 },
-  greeting: { color: INK, fontWeight: '900', fontSize: 26, marginTop: 5, letterSpacing: -0.6 },
-  greetingSub: { color: MUTED, fontSize: 12, marginTop: 5 },
-  profileButton: { backgroundColor: '#E9EDE8', borderRadius: 24, padding: 13 },
-  switcher: { flexDirection: 'row', padding: 5, gap: 5, borderRadius: 20, backgroundColor: '#E6E7E4', marginBottom: 15 },
-  modeButton: { flex: 1, paddingVertical: 12, borderRadius: 16, alignItems: 'center', minHeight: 44, justifyContent: 'center' },
+  greeting: { color: INK, fontWeight: '900', fontSize: 22, marginTop: 3, letterSpacing: -0.5 },
+  greetingSub: { color: MUTED, fontSize: 11, marginTop: 4 },
+  profileButton: { backgroundColor: '#E9EDE8', borderRadius: 24, padding: 11 },
+  switcher: { flexDirection: 'row', padding: 3, gap: 4, borderRadius: 17, backgroundColor: '#E6E7E4', marginBottom: 11 },
+  modeButton: { flex: 1, paddingVertical: 7, borderRadius: 14, alignItems: 'center', minHeight: 41, justifyContent: 'center' },
   modeText: { color: '#6B7371', fontSize: 14, fontWeight: '700' }, modeTextActive: { color: INK, fontWeight: '900' },
-  hero: { borderRadius: 25, overflow: 'hidden', marginBottom: 8 },
-  heroImage: { minHeight: 297, justifyContent: 'flex-end' }, heroCorners: { borderRadius: 25 },
-  heroShade: { paddingHorizontal: 22, paddingVertical: 24, paddingTop: 86, minHeight: 297, justifyContent: 'flex-end' },
-  heroLabel: { fontSize: 11, fontWeight: '900', letterSpacing: 1.4, marginBottom: 8 },
-  heroTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 29, lineHeight: 34, maxWidth: 530 },
-  heroBody: { color: '#F4F5EC', fontSize: 13, lineHeight: 20, marginTop: 10, maxWidth: 480 },
-  heroStatus: { marginTop: 9, fontSize: 14, fontWeight: '900' },
-  heroButton: { alignSelf: 'flex-start', marginTop: 16, paddingHorizontal: 19, paddingVertical: 14, borderRadius: 24, minHeight: 46, justifyContent: 'center' },
-  heroButtonText: { color: INK, fontSize: 13, fontWeight: '900' },
+  hero: { borderRadius: 21, overflow: 'hidden', marginBottom: 0 },
+  heroImage: { minHeight: 187, justifyContent: 'flex-end' }, heroCorners: { borderRadius: 21 },
+  heroShade: { paddingHorizontal: 18, paddingVertical: 16, paddingTop: 22, minHeight: 187, justifyContent: 'flex-end' },
+  heroLabel: { fontSize: 9, fontWeight: '900', letterSpacing: 1.3, marginBottom: 4 },
+  heroTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 23, lineHeight: 27, maxWidth: 530 },
+  heroBody: { color: '#F4F5EC', fontSize: 12, lineHeight: 17, marginTop: 5, maxWidth: 480 },
+  heroStatus: { marginTop: 5, fontSize: 12, fontWeight: '900' },
+  heroButton: { alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20, minHeight: 42, justifyContent: 'center' },
+  heroButtonText: { color: INK, fontSize: 12, fontWeight: '900' },
   actionStrip: { backgroundColor: '#F8EED7', borderRadius: 17, flexDirection: 'row', alignItems: 'center', gap: 11, padding: 15, marginTop: 11 },
   actionTitle: { color: INK, fontSize: 13, fontWeight: '900' }, actionCopy: { color: '#5F6357', fontSize: 11, marginTop: 3, lineHeight: 17 },
   loading: { marginVertical: 12 }, error: { color: '#A33C3C', fontSize: 12, fontWeight: '800', paddingVertical: 10 },
-  personalizeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 19 },
+  personalizeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
   homeLabel: { color: '#74817A', fontWeight: '900', fontSize: 10, letterSpacing: 1.4 },
-  editButton: { flexDirection: 'row', gap: 5, alignItems: 'center', paddingVertical: 9, paddingHorizontal: 9 },
+  editButton: { flexDirection: 'row', gap: 5, alignItems: 'center', paddingVertical: 7, paddingHorizontal: 9 },
   editText: { color: '#315A46', fontSize: 12, fontWeight: '800' },
+  quickTiles: { flexDirection: 'row', gap: 10, marginTop: 2, alignItems: 'stretch' },
+  quickTile: { flex: 1, minWidth: 0, minHeight: 139, borderRadius: 18, padding: 14, justifyContent: 'space-between' },
+  quickTileIcon: { width: 31, height: 31, justifyContent: 'center' },
+  quickTileIconLight: { width: 31, height: 31, justifyContent: 'center' },
+  quickTileTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 17, marginTop: 4 },
+  quickTileCopy: { color: '#E3ECE6', fontSize: 11, lineHeight: 15, marginTop: 2 },
+  quickTileLink: { fontSize: 11, fontWeight: '900', marginTop: 6 },
+  quickTrail: { backgroundColor: '#EAE9D9' },
+  quickTrailTitle: { color: '#223C2D' },
+  quickTrailCopy: { color: '#506251' },
+  quickTrailLink: { fontSize: 11, color: '#426741', fontWeight: '900', marginTop: 6 },
   editor: { backgroundColor: '#FFF', borderColor: '#DBE2DB', borderWidth: 1, padding: 16, borderRadius: 18, marginTop: 7, gap: 9 },
   editorTitle: { fontSize: 16, fontWeight: '900', color: INK },
   editorHint: { color: MUTED, fontSize: 12, lineHeight: 18 },
@@ -467,6 +493,8 @@ const styles = StyleSheet.create({
   circleTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '900', marginTop: 4 },
   circleBody: { color: '#DDE7DF', fontSize: 12, lineHeight: 19, marginTop: 14 },
   pulseCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 13, borderRadius: 14, gap: 10 },
+  pulseEmpty: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 13, borderRadius: 14, gap: 10, minHeight: 83 },
+  pulsePhoto: { width: 66, height: 59, borderRadius: 11 },
   pulseIcon: { borderRadius: 12, padding: 10, backgroundColor: '#E6F1E9' },
   pulseAuthor: { color: INK, fontWeight: '900', fontSize: 12 },
   pulseBody: { color: MUTED, marginTop: 3, lineHeight: 17, fontSize: 12 },
