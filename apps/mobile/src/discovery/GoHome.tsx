@@ -330,7 +330,7 @@ export default function GoHome() {
       </Pressable>) : <Pressable accessibilityRole="button" style={styles.pulseEmpty} onPress={() => router.push('/communities')}>
         <View style={styles.pulseIcon}><AppIcon name="photos" color={primary} size={24}/></View>
         <View style={styles.flex}><Text style={styles.pulseAuthor}>Your people, your stories</Text>
-          <Text style={styles.pulseBody}>Explore shared moments from the communities you've joined.</Text></View>
+          <Text style={styles.pulseBody}>Explore shared moments from the communities you&apos;ve joined.</Text></View>
         <AppIcon name="chevron-forward" color={MUTED} size={18}/>
       </Pressable>}
     </View>;
