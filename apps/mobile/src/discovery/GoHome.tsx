@@ -1,7 +1,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, ImageBackground, Pressable, RefreshControl,
+  ActivityIndicator, Alert, Image, ImageBackground, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, View, useWindowDimensions,
 } from 'react-native';
 import Storage from 'expo-sqlite/kv-store';
@@ -254,31 +254,24 @@ export default function GoHome() {
   function sectionContent(section: HomeSection) {
     if (section === 'circle') return <View key="circle" style={styles.sectionBlock}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Your circle</Text>
+        <Text style={styles.sectionTitle}>From your circle</Text>
         <Pressable accessibilityRole="button" onPress={() => router.push('/communities')}>
-          <Text style={styles.seeAll}>Communities →</Text>
+          <Text style={styles.seeAll}>See all →</Text>
         </Pressable>
       </View>
-      <Pressable accessibilityRole="button" style={[styles.circleCard, { backgroundColor: primary }]} onPress={() => router.push('/communities')}>
-        <View style={styles.circleHeading}>
-          <View style={[styles.circleIcon, { backgroundColor: mode === 'nature' ? '#29553E' : '#483269' }]}>
-            <AppIcon name="community" size={24} color={accent}/>
-          </View>
-          <View style={styles.flex}>
-            <Text style={styles.lightEyebrow}>PEOPLE MAKE THE EXPERIENCE</Text>
-            <Text style={styles.circleTitle}>{mode === 'nature' ? 'Find your people outside.' : 'Find your people after dark.'}</Text>
-          </View>
-        </View>
-        <Text style={styles.circleBody}>{groups.length ? 'You belong to ' + groups.length + (groups.length === 1 ? ' community.' : ' communities.') + ' Catch up with your people.' : 'Find a community, meet your people, and see the stories they share.'}</Text>
-        <Text style={[styles.circleAction, { color: accent }]}>See your communities  →</Text>
-      </Pressable>
-      {posts.map(post => <Pressable key={post.id} accessibilityRole="button" style={styles.pulseCard}
+      {posts.length ? posts.map(post => <Pressable key={post.id} accessibilityRole="button" style={styles.pulseCard}
         onPress={() => post.group_id ? router.push({ pathname: '/groups/[id]', params: { id: post.group_id } }) : router.push('/communities')}>
-        <View style={styles.pulseIcon}><AppIcon name={post.post_type === 'photo' ? 'photos' : 'message'} color={primary} size={19}/></View>
+        {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.pulsePhoto}/> :
+          <View style={styles.pulseIcon}><AppIcon name={post.post_type === 'photo' ? 'photos' : 'message'} color={primary} size={19}/></View>}
         <View style={styles.flex}><Text style={styles.pulseAuthor}>{post.author_name || 'Community member'}</Text>
           <Text style={styles.pulseBody} numberOfLines={2}>{post.body || (post.post_type === 'photo' ? 'Shared a photo with the community.' : 'Shared an update.')}</Text></View>
         <AppIcon name="chevron-forward" color={MUTED} size={17}/>
-      </Pressable>)}
+      </Pressable>) : <Pressable accessibilityRole="button" style={styles.pulseEmpty} onPress={() => router.push('/communities')}>
+        <AppIcon name="photos" color={primary} size={25}/>
+        <View style={styles.flex}><Text style={styles.pulseAuthor}>Your people, your stories</Text>
+          <Text style={styles.pulseBody}>Explore groups and stories shared by the community.</Text></View>
+        <AppIcon name="chevron-forward" color={MUTED} size={18}/>
+      </Pressable>}
     </View>;
     if (section === 'trail') return <View key="trail" style={styles.sectionBlock}>
       <Text style={styles.sectionTitle}>{mode === 'nature' ? 'Your story so far' : 'Your plans & memories'}</Text>
@@ -292,7 +285,7 @@ export default function GoHome() {
         </Pressable>
         <Pressable accessibilityRole="button" style={[styles.miniTile, styles.planTile]} onPress={() => router.push('/member/trips')}>
           <AppIcon name="calendar" color="#614A79" size={25}/>
-          <Text style={styles.miniNumber}>{session ? trips.filter(trip => trip.adventures && Date.parse(trip.adventures.starts_at) >= now && !['cancelled', 'refunded', 'expired'].includes(trip.status) && trip.adventures.status !== 'cancelled').length : '—'}</Text>
+          <Text style={styles.miniNumber}>{session ? trips.filter(trip => activeBooking(trip, now)).length : '—'}</Text>
           <Text style={styles.miniHeading}>Your plans</Text>
           <Text style={styles.miniBody}>Upcoming reservations and experiences</Text>
           <Text style={styles.miniAction}>See your plans →</Text>
@@ -496,6 +489,8 @@ const styles = StyleSheet.create({
   circleTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '900', marginTop: 4 },
   circleBody: { color: '#DDE7DF', fontSize: 12, lineHeight: 19, marginTop: 14 },
   pulseCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 13, borderRadius: 14, gap: 10 },
+  pulseEmpty: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 13, borderRadius: 14, gap: 10, minHeight: 83 },
+  pulsePhoto: { width: 66, height: 59, borderRadius: 11 },
   pulseIcon: { borderRadius: 12, padding: 10, backgroundColor: '#E6F1E9' },
   pulseAuthor: { color: INK, fontWeight: '900', fontSize: 12 },
   pulseBody: { color: MUTED, marginTop: 3, lineHeight: 17, fontSize: 12 },
