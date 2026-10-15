@@ -24,7 +24,7 @@ const PURPLE = '#C891F5';
 const INK = '#0E1716';
 const MUTED = '#65706D';
 const DEFAULT_NATURE = require('../../assets/trailhead-banners/explorer-clear-morning.jpg');
-const DEFAULT_NIGHT = require('../../assets/trailhead-banners/adventurer-evening.jpg');
+const DEFAULT_NIGHT = require('../../assets/onboarding/onboarding-people.jpg');
 
 /** Keep actual photography visible at the top, with legible copy below. */
 function PhotoShade({ id, night = false, gentle = false }: { id: string; night?: boolean; gentle?: boolean }) {
@@ -60,6 +60,7 @@ function dateLabel(value: string) {
 }
 function eventRoute(item: DiscoveryItem) {
   if (item.source === 'adventure') router.push({ pathname: '/adventures/[id]', params: { id: item.id } });
+  else if (item.source === 'demo') router.push({ pathname: '/demo-events/[id]', params: { id: item.id } });
   else router.push({ pathname: '/local-events/[id]', params: { id: item.id } });
 }
 function goDiscover(mode: string, query?: string) {
@@ -88,9 +89,10 @@ export function ExperienceCard({ item, width = 238, onSavedChange }: {
   }
   return <Pressable accessibilityRole="button" accessibilityLabel={`Open ${item.title}`}
     onPress={() => eventRoute(item)} style={[styles.eventCard, { width }]}>
-    <ImageBackground source={item.image ? { uri: item.image } : item.mode === 'nature' ? DEFAULT_NATURE : DEFAULT_NIGHT}
+    <ImageBackground source={item.image ? { uri: item.image } : item.source === 'demo' ? require('../../assets/onboarding/onboarding-people.jpg') : item.mode === 'nature' ? DEFAULT_NATURE : DEFAULT_NIGHT}
       style={styles.eventImage} imageStyle={styles.eventImageRadius}>
-      <View style={styles.eventTag}><Text style={[styles.tagText, { color: accent }]}>{item.mode.toUpperCase()}</Text></View>
+      <View style={styles.eventTag}><Text style={[styles.tagText, { color: accent }]}>{item.mode === 'night' ? 'NIGHTS' : 'NATURE'}</Text></View>
+      {item.source === 'demo' ? <View style={styles.demoTag}><Text style={styles.demoTagText}>DEMO</Text></View> : null}
       {item.source === 'adventure' ? <Pressable disabled={saving} onPress={(e) => { e.stopPropagation(); void toggle(); }}
         accessibilityRole="button" accessibilityLabel={item.saved ? 'Remove saved adventure' : 'Save adventure'}
         style={styles.saveBadge}><AppIcon name={item.saved ? 'bookmark' : 'bookmark'} color={item.saved ? '#D7B45A' : '#FFFFFF'} size={18}/></Pressable> : null}
@@ -116,6 +118,18 @@ const MOODS: { id: AdventureMood; label: string; icon: string; search: string }[
   { id: 'move', label: 'Get moving', icon: '🥾', search: 'hiking' },
   { id: 'curious', label: 'Try something new', icon: '✨', search: '' },
 ];
+const CITY_MOODS: { id: AdventureMood; label: string; icon: string; search: string }[] = [
+  { id: 'recharge', label: 'Take it easy', icon: '☕', search: 'coffee' },
+  { id: 'people', label: 'Meet people', icon: '🤝', search: 'social' },
+  { id: 'move', label: 'Explore on foot', icon: '🚶', search: 'walk' },
+  { id: 'curious', label: 'Discover culture', icon: '🎨', search: 'museum' },
+];
+const CITY_MOOD_TERMS: Record<AdventureMood, RegExp> = {
+  recharge: /coffee|brunch|relax|food|museum/i,
+  people: /social|meet|connect|community|coffee|comedy|brunch|food/i,
+  move: /walk|market|gallery|explor|tour|fitness/i,
+  curious: /gallery|art|museum|culture|maker|workshop|volunteer|history/i,
+};
 const MOOD_TERMS: Record<AdventureMood, RegExp> = {
   recharge: /park|spring|garden|beach|wellness|relax|picnic|nature|scenic|water/i,
   people: /group|social|meet|community|music|festival|gather|camp|brunch/i,
@@ -295,16 +309,17 @@ export default function GoHome() {
   const needsReflection = Number.isFinite(recentAt) && now - recentAt < 14 * 86400000
     && now - recentAt >= 0 && recentJourney?.photo_count === 0;
   const savedCategories = useMemo(() => new Set(items.filter(item => item.saved).map(item => item.category.toLowerCase())), [items]);
+  const moodOptions = mode === 'nature' ? MOODS : CITY_MOODS;
   const suggestions = useMemo(() => {
     const related = myItems.filter(item => {
       if (!mood) return true;
-      return MOOD_TERMS[mood].test(item.title + ' ' + item.category + ' ' + item.description + ' ' + item.tags.join(' '));
+      return (mode === 'nature' ? MOOD_TERMS : CITY_MOOD_TERMS)[mood].test(item.title + ' ' + item.category + ' ' + item.description + ' ' + item.tags.join(' '));
     });
     return [...related].sort((a, b) =>
       Number(savedCategories.has(b.category.toLowerCase())) - Number(savedCategories.has(a.category.toLowerCase()))
       || Number(b.featured) - Number(a.featured)
       || Date.parse(a.startsAt) - Date.parse(b.startsAt)).slice(0, 4);
-  }, [myItems, mood, savedCategories]);
+  }, [myItems, mood, savedCategories, mode]);
 
   const updateSaved = (id: string, saved: boolean) =>
     setItems(current => current.map(item => item.id === id && item.source === 'adventure' ? { ...item, saved } : item));
@@ -398,7 +413,7 @@ export default function GoHome() {
       <View style={styles.moodPanel}>
         <View style={styles.moodHead}><AppIcon name="sparkles" color={primary} size={20}/>
           <Text style={styles.moodTitle}>What sounds good today?</Text></View>
-        <View style={styles.moodRow}>{MOODS.map(option =>
+        <View style={styles.moodRow}>{moodOptions.map(option =>
           <Pressable key={option.id} accessibilityRole="button" accessibilityState={{ selected: mood === option.id }}
             onPress={() => setMood(current => current === option.id ? null : option.id)}
             style={[styles.moodChip, mood === option.id && { borderColor: primary, backgroundColor: mode === 'nature' ? '#D8EEDB' : '#EDE0F6' }]}>
@@ -408,7 +423,7 @@ export default function GoHome() {
       {!!suggestions.length && <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cards}>
         {suggestions.map(item => <ExperienceCard key={item.source + ':' + item.id} item={item} width={cardWidth} onSavedChange={updateSaved}/>)}
       </ScrollView>}
-      {!suggestions.length && <Pressable style={styles.empty} onPress={() => goDiscover(mode, mood ? MOODS.find(value => value.id === mood)?.search : undefined)}>
+      {!suggestions.length && <Pressable style={styles.empty} onPress={() => goDiscover(mode, mood ? moodOptions.find(value => value.id === mood)?.search : undefined)}>
         <Text style={styles.emptyTitle}>Nothing matching that mood is listed yet.</Text>
         <Text style={styles.muted}>Browse more experiences in Discover →</Text>
       </Pressable>}
@@ -429,7 +444,7 @@ export default function GoHome() {
   const heroHeading = actionTrip?.title || (mode === 'nature' ? 'Your next chapter starts outside.' : 'The city is yours to explore.');
   const heroDescription = actionTrip
     ? (isLive ? 'Happening now · ' : dateLabel(actionTrip.starts_at) + ' · ') + actionTrip.city + ', ' + actionTrip.state
-    : mode === 'nature' ? 'New places. Familiar faces. Experiences you will remember.' : 'Music, culture, food, and good company. Find your next story.';
+    : mode === 'nature' ? 'New places. Familiar faces. Experiences you will remember.' : 'Brunch, culture, markets, music, and more. Your city, all day.';
   return <ScrollView ref={scrollRef} style={[styles.screen, mode === 'night' && styles.nightScreen]}
     contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={primary}/>}>
     <View style={styles.brandBar}>
@@ -442,7 +457,7 @@ export default function GoHome() {
       <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: mode === value }}
         onPress={() => switchMode(value)}
         style={[styles.modeButton, mode === value && { backgroundColor: value === 'nature' ? '#D6F0CC' : '#EAD8F7' }]}>
-        <Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{value === 'nature' ? '🌿  Nature' : '🌙  Night'}</Text>
+        <Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{value === 'nature' ? '🌿  Nature' : '🌆  Nights'}</Text>
       </Pressable>)}</View>
     <GoTrailheadScene displayName={memberName} greeting={greetingFor(new Date(now).getHours())}
       rank={effectiveRank} badges={memberBadges} weather={localWeather}
@@ -539,8 +554,8 @@ export default function GoHome() {
       <View style={styles.flex}>
         <Text style={styles.crossKicker}>THERE&apos;S MORE TO YOUR WORLD</Text>
         <Text style={styles.crossTitle}>{mode === 'nature' ? 'A little city adventure?' : 'Take the scenic route.'}</Text>
-        <Text style={styles.muted}>{mode === 'nature' ? 'Discover the culture and experiences happening after dark.' : 'See what is waiting beyond the pavement.'}</Text>
-        <Text style={styles.crossAction}>Switch to {mode === 'nature' ? 'Night' : 'Nature'}  →</Text>
+        <Text style={styles.muted}>{mode === 'nature' ? 'Discover brunches, markets, arts, food, and city experiences all day.' : 'See what is waiting beyond the pavement.'}</Text>
+        <Text style={styles.crossAction}>Switch to {mode === 'nature' ? 'Nights' : 'Nature'}  →</Text>
       </View>
     </Pressable>
     <View style={styles.bottomSpace}/>
@@ -676,6 +691,8 @@ const styles = StyleSheet.create({
   eventImageRadius: { borderTopLeftRadius: 14, borderTopRightRadius: 14 },
   eventTag: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 14, backgroundColor: '#FFFFFFE9' },
   tagText: { fontSize: 9, fontWeight: '900' },
+  demoTag: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 14, backgroundColor: '#271A41E9' },
+  demoTagText: { fontSize: 9, fontWeight: '900', color: '#FFFFFF' },
   saveBadge: { backgroundColor: '#15221EC9', padding: 7, borderRadius: 20 },
   eventCopy: { padding: 12, gap: 5 },
   eventTitle: { color: INK, fontSize: 14, fontWeight: '800', minHeight: 35 },
