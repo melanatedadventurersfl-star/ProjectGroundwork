@@ -5,11 +5,11 @@
   "positionsPerAvatar": 2,
   "summary": {
     "totalExercises": 49,
-    "approvedExercises": 38,
-    "pendingExercises": 11,
+    "approvedExercises": 16,
+    "pendingExercises": 33,
     "totalRequiredImages": 392,
-    "approvedImages": 304,
-    "remainingImages": 88
+    "approvedImages": 128,
+    "remainingImages": 264
   },
   "statuses": [
     "missing",
