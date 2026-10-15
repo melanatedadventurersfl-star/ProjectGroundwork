@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import Storage from 'expo-sqlite/kv-store';
 import { useAuth } from '../auth/AuthProvider';
+import { getCommunityFeed, getGroups, type CommunityPost, type CommunityGroup } from '../community/api';
 import { getMemberTrips, type MemberTrip } from '../member/api';
 import { supabase } from '../lib/supabase';
 import { getJourney, type JourneyItem } from '../passport/api';
@@ -16,8 +17,6 @@ import { useGoMode } from './useGoMode';
 const GREEN = '#A8ED8F';
 const PURPLE = '#C891F5';
 const INK = '#0E1716';
-const BG = '#F7F7F4';
-const DARK = '#17251F';
 const MUTED = '#65706D';
 const DEFAULT_NATURE = require('../../assets/trailhead-banners/explorer-clear-morning.jpg');
 const DEFAULT_NIGHT = require('../../assets/trailhead-banners/adventurer-evening.jpg');
@@ -116,7 +115,7 @@ function sectionKey(userId: string, mode: string) {
 function validSections(value: unknown): HomeSection[] {
   if (!Array.isArray(value)) return HOME_SECTIONS;
   const filtered = value.filter((entry): entry is HomeSection => HOME_SECTIONS.includes(entry as HomeSection));
-  return filtered.length ? [...new Set(filtered)] : HOME_SECTIONS;
+  return [...new Set(filtered)];
 }
 
 export default function GoHome() {
@@ -127,6 +126,8 @@ export default function GoHome() {
   const [items, setItems] = useState<DiscoveryItem[]>([]);
   const [journey, setJourney] = useState<JourneyItem[]>([]);
   const [trips, setTrips] = useState<MemberTrip[]>([]);
+  const [posts, setPosts] = useState<CommunityPost[]>([]);
+  const [groups, setGroups] = useState<CommunityGroup[]>([]);
   const [profile, setProfile] = useState({ name: '', username: '', city: '', interests: [] as string[] });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -137,7 +138,6 @@ export default function GoHome() {
   const [now, setNow] = useState(() => Date.now());
   const accent = mode === 'nature' ? GREEN : PURPLE;
   const primary = mode === 'nature' ? '#12392C' : '#271A41';
-  const modeText = mode === 'nature' ? 'Nature' : 'Night';
   const cardWidth = Math.min(width * 0.66, 270);
 
   useEffect(() => {
@@ -174,17 +174,24 @@ export default function GoHome() {
     else setLoading(true);
     setNow(Date.now());
     const userId = session?.user.id;
-    const [results, history, bookings, details] = await Promise.allSettled([
+    const [results, history, bookings, details, activity, memberships] = await Promise.allSettled([
       loadDiscoveryItems(),
       userId ? getJourney() : Promise.resolve([] as JourneyItem[]),
       userId ? getMemberTrips() : Promise.resolve([] as MemberTrip[]),
       userId ? supabase.from('profiles').select('display_name,username,home_city,interests').eq('id', userId).maybeSingle() : Promise.resolve({ data: null }),
+      userId ? getCommunityFeed() : Promise.resolve([] as CommunityPost[]),
+      userId ? getGroups() : Promise.resolve([] as CommunityGroup[]),
     ]);
     if (results.status === 'fulfilled') {
       setItems(results.value);
       setError(null);
     } else setError('Experiences could not load. Pull down to try again.');
     if (history.status === 'fulfilled') setJourney(history.value);
+    if (memberships.status === 'fulfilled') setGroups(memberships.value.filter(group => group.is_member));
+    if (activity.status === 'fulfilled' && memberships.status === 'fulfilled') {
+      const myGroups = new Set(memberships.value.filter(group => group.is_member).map(group => group.id));
+      setPosts(activity.value.filter(post => myGroups.has(post.group_id || '') || (post.audience === 'everyone' && !post.group_id)).slice(0, 2));
+    }
     if (bookings.status === 'fulfilled') setTrips(bookings.value);
     if (details.status === 'fulfilled' && details.value.data) {
       const data = details.value.data;
@@ -206,9 +213,13 @@ export default function GoHome() {
   );
   const myItems = useMemo(() => items.filter(item => item.mode === mode), [items, mode]);
   const futureTrips = useMemo(() => upcomingTrip(trips), [trips]);
-  const actionTrip = futureTrips?.adventures ?? null;
-  const isPending = futureTrips?.status === 'held' || futureTrips?.status === 'payment_pending';
-  const featured = myItems.find(item => item.featured && item.image) ?? myItems.find(item => item.image) ?? null;
+  const liveTrip = trips.find(trip => trip.status === 'paid' && trip.adventures?.status !== 'cancelled'
+    && trip.adventures && Date.parse(trip.adventures.starts_at) <= now
+    && Date.parse(trip.adventures.ends_at) >= now) ?? null;
+  const primaryTrip = liveTrip ?? futureTrips;
+  const actionTrip = primaryTrip?.adventures ?? null;
+  const isLive = Boolean(liveTrip);
+  const isPending = primaryTrip?.status === 'held' || primaryTrip?.status === 'payment_pending';
   const recentJourney = journey[0] ?? null;
   const recentAt = recentJourney ? Date.parse(recentJourney.experienced_at) : NaN;
   const needsReflection = Number.isFinite(recentAt) && now - recentAt < 14 * 86400000
@@ -251,9 +262,16 @@ export default function GoHome() {
             <Text style={styles.circleTitle}>{mode === 'nature' ? 'Find your people outside.' : 'Find your people after dark.'}</Text>
           </View>
         </View>
-        <Text style={styles.circleBody}>Catch up with the communities you belong to, see member stories, or find a new crew.</Text>
+        <Text style={styles.circleBody}>{groups.length ? 'You belong to ' + groups.length + (groups.length === 1 ? ' community.' : ' communities.') + ' Catch up with your people.' : 'Find a community, meet your people, and see the stories they share.'}</Text>
         <Text style={[styles.circleAction, { color: accent }]}>See your communities  →</Text>
       </Pressable>
+      {posts.map(post => <Pressable key={post.id} accessibilityRole="button" style={styles.pulseCard}
+        onPress={() => post.group_id ? router.push({ pathname: '/groups/[id]', params: { id: post.group_id } }) : router.push('/communities')}>
+        <View style={styles.pulseIcon}><AppIcon name={post.post_type === 'photo' ? 'photos' : 'message'} color={primary} size={19}/></View>
+        <View style={styles.flex}><Text style={styles.pulseAuthor}>{post.author_name || 'Community member'}</Text>
+          <Text style={styles.pulseBody} numberOfLines={2}>{post.body || (post.post_type === 'photo' ? 'Shared a photo with the community.' : 'Shared an update.')}</Text></View>
+        <AppIcon name="chevron-forward" color={MUTED} size={17}/>
+      </Pressable>)}
     </View>;
     if (section === 'trail') return <View key="trail" style={styles.sectionBlock}>
       <Text style={styles.sectionTitle}>{mode === 'nature' ? 'Your story so far' : 'Your plans & memories'}</Text>
@@ -320,7 +338,7 @@ export default function GoHome() {
   const days = actionTrip ? daysUntil(actionTrip.starts_at) : 0;
   const heroHeading = actionTrip?.title || (mode === 'nature' ? 'Your next chapter starts outside.' : 'The city is yours to explore.');
   const heroDescription = actionTrip
-    ? dateLabel(actionTrip.starts_at) + ' · ' + actionTrip.city + ', ' + actionTrip.state
+    ? (isLive ? 'Happening now · ' : dateLabel(actionTrip.starts_at) + ' · ') + actionTrip.city + ', ' + actionTrip.state
     : mode === 'nature' ? 'New places. Familiar faces. Experiences you will remember.' : 'Music, culture, food, and good company. Find your next story.';
   return <ScrollView ref={scrollRef} style={[styles.screen, mode === 'night' && styles.nightScreen]}
     contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={primary}/>}>
@@ -341,24 +359,24 @@ export default function GoHome() {
         <Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{value === 'nature' ? '🌿  Nature' : '🌙  Night'}</Text>
       </Pressable>)}</View>
     <View style={[styles.hero, { backgroundColor: primary }]}>
-      <ImageBackground source={actionTrip?.hero_image_url ? { uri: actionTrip.hero_image_url } : featured?.image ? { uri: featured.image } : mode === 'nature' ? DEFAULT_NATURE : DEFAULT_NIGHT}
+      <ImageBackground source={actionTrip?.hero_image_url ? { uri: actionTrip.hero_image_url } : mode === 'nature' ? DEFAULT_NATURE : DEFAULT_NIGHT}
         style={styles.heroImage} imageStyle={styles.heroCorners}>
         <View style={[styles.heroShade, { backgroundColor: mode === 'nature' ? 'rgba(6,25,16,0.77)' : 'rgba(24,12,47,0.79)' }]}>
-          <Text style={[styles.heroLabel, { color: accent }]}>{hasBooking ? isPending ? 'ACTION NEEDED · YOUR RESERVATION' : 'YOUR NEXT ADVENTURE' : mode === 'nature' ? 'LET’S GO OUTSIDE' : 'LET’S GO OUT'}</Text>
+          <Text style={[styles.heroLabel, { color: accent }]}>{isLive ? 'YOUR ADVENTURE IS LIVE' : hasBooking ? isPending ? 'ACTION NEEDED · YOUR RESERVATION' : 'YOUR NEXT ADVENTURE' : mode === 'nature' ? 'LET’S GO OUTSIDE' : 'LET’S GO OUT'}</Text>
           <Text style={styles.heroTitle}>{heroHeading}</Text>
           <Text style={styles.heroBody}>{heroDescription}</Text>
-          {hasBooking && <Text style={[styles.heroStatus, { color: accent }]}>{isPending ? 'Complete your reservation' : days === 0 ? 'Coming up today' : days === 1 ? 'Tomorrow' : days + ' days to go'}</Text>}
+          {hasBooking && <Text style={[styles.heroStatus, { color: accent }]}>{isLive ? 'Your experience is underway' : isPending ? 'Complete your reservation' : days === 0 ? 'Coming up today' : days === 1 ? 'Tomorrow' : days + ' days to go'}</Text>}
           <Pressable accessibilityRole="button" onPress={() => hasBooking ? router.push({ pathname: '/adventures/[id]', params: { id: actionTrip!.id } }) : goDiscover(mode)}
             style={[styles.heroButton, { backgroundColor: accent }]}>
-            <Text style={styles.heroButtonText}>{hasBooking ? isPending ? 'Review reservation' : 'View your adventure' : 'Find your next experience'}  →</Text>
+            <Text style={styles.heroButtonText}>{isLive ? 'Open your adventure' : hasBooking ? isPending ? 'Review reservation' : 'View your adventure' : 'Find your next experience'}  →</Text>
           </Pressable>
         </View>
       </ImageBackground>
     </View>
-    {hasBooking && <Pressable accessibilityRole="button" style={styles.actionStrip} onPress={() => router.push('/member/trips')}>
-      <AppIcon name={isPending ? 'warning' : 'check'} color={isPending ? '#875C28' : '#1F6842'} size={20}/>
-      <View style={styles.flex}><Text style={styles.actionTitle}>{isPending ? 'Your reservation needs attention' : 'Your adventure is on your calendar'}</Text>
-        <Text style={styles.actionCopy}>{isPending ? 'Check your booking status and any required steps.' : 'Find booking details and prepare for the day.'}</Text></View>
+    {hasBooking && <Pressable accessibilityRole="button" style={styles.actionStrip} onPress={() => isLive ? router.push({ pathname: '/adventures/[id]', params: { id: actionTrip!.id } }) : router.push('/member/trips')}>
+      <AppIcon name={isPending ? 'warning' : isLive ? 'map' : 'check'} color={isPending ? '#875C28' : '#1F6842'} size={20}/>
+      <View style={styles.flex}><Text style={styles.actionTitle}>{isLive ? 'Adventure mode is ready' : isPending ? 'Your reservation needs attention' : 'Your adventure is on your calendar'}</Text>
+        <Text style={styles.actionCopy}>{isLive ? 'Open the adventure for schedules, arrival details, and check-in.' : isPending ? 'Check your booking status and any required steps.' : 'Find booking details and prepare for the day.'}</Text></View>
       <AppIcon name="chevron-forward" color="#52665B" size={18}/>
     </Pressable>}
     {loading && <ActivityIndicator color={primary} style={styles.loading}/>}
@@ -448,6 +466,10 @@ const styles = StyleSheet.create({
   lightEyebrow: { color: '#A9C7B6', fontSize: 9, fontWeight: '900', letterSpacing: 1.4 },
   circleTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '900', marginTop: 4 },
   circleBody: { color: '#DDE7DF', fontSize: 12, lineHeight: 19, marginTop: 14 },
+  pulseCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 13, borderRadius: 14, gap: 10 },
+  pulseIcon: { borderRadius: 12, padding: 10, backgroundColor: '#E6F1E9' },
+  pulseAuthor: { color: INK, fontWeight: '900', fontSize: 12 },
+  pulseBody: { color: MUTED, marginTop: 3, lineHeight: 17, fontSize: 12 },
   circleAction: { fontWeight: '900', fontSize: 12, marginTop: 11 },
   duo: { flexDirection: 'row', gap: 10 },
   miniTile: { flex: 1, borderRadius: 20, padding: 16, minHeight: 185, justifyContent: 'space-between' },
