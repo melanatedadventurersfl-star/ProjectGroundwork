@@ -409,7 +409,7 @@ export default function GoHome() {
     {sections.map(sectionContent)}
     <Pressable style={styles.crossCard} accessibilityRole="button" onPress={() => switchMode(mode === 'nature' ? 'night' : 'nature')}>
       <View style={styles.flex}>
-        <Text style={styles.crossKicker}>THERE'S MORE TO YOUR WORLD</Text>
+        <Text style={styles.crossKicker}>THERE&apos;S MORE TO YOUR WORLD</Text>
         <Text style={styles.crossTitle}>{mode === 'nature' ? 'A little city adventure?' : 'Take the scenic route.'}</Text>
         <Text style={styles.muted}>{mode === 'nature' ? 'Discover the culture and experiences happening after dark.' : 'See what is waiting beyond the pavement.'}</Text>
         <Text style={styles.crossAction}>Switch to {mode === 'nature' ? 'Night' : 'Nature'}  →</Text>
