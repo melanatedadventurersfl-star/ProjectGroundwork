@@ -69,7 +69,7 @@ export function GoTrailheadScene({ displayName, greeting, rank, badges, weather,
               accessibilityLabel={temp ? 'Weather: ' + temp + ', ' + weather?.current.condition.text : 'View local weather'}
               style={styles.weatherPill}>
               <View style={styles.weatherTop}>
-                <Text style={styles.weatherGlyph}>{weather ? glyph(weatherTheme, phase) : '☀'}</Text>
+                {weather ? <Text style={styles.weatherGlyph}>{glyph(weatherTheme, phase)}</Text> : <AppIcon name="weather" color="#F9E4A5" size={19}/>}
                 <Text style={styles.weatherTemp}>{temp || 'Weather'}</Text>
               </View>
               <Text style={styles.weatherCondition} numberOfLines={1}>{weather?.current.condition.text ?? (homeLocation ? 'Forecast unavailable' : 'Set your city')}</Text>
