@@ -413,7 +413,7 @@ export default function GoHome() {
           {event.image_url ? <Image source={{ uri: event.image_url }} style={styles.cityPlanImage}/> :
             <View style={styles.cityPlanIcon}><AppIcon name="calendar" color="#68438F" size={23}/></View>}
           <View style={styles.flex}>
-            <Text style={styles.cityPlanLabel}>YOU'RE GOING · {dateLabel(event.starts_at)}</Text>
+            <Text style={styles.cityPlanLabel}>YOU&apos;RE GOING · {dateLabel(event.starts_at)}</Text>
             <Text style={styles.cityPlanTitle} numberOfLines={1}>{event.title}</Text>
             <Text style={styles.cityPlanMeta} numberOfLines={1}>{event.city}, {event.state}</Text>
           </View>
