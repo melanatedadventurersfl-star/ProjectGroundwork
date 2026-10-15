@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase';
 import { AppIcon } from '../ui/AppIcon';
 import { filterDiscovery, loadDiscoveryItems, proximityReason, type DiscoveryFilters, type DiscoveryItem } from './catalog';
 import { ExperienceCard } from './GoHome';
+import { useGoMode } from './useGoMode';
 
 const NAVY = '#172E49';
 const INK = '#172122';
@@ -41,9 +42,10 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
 
 export default function GoDiscover() {
   const { session } = useAuth();
+  const { mode: selectedWorld, chooseMode } = useGoMode(session?.user.id);
   const { mode: routeMode, q } = useLocalSearchParams<{ mode?: string; q?: string }>();
   const { width } = useWindowDimensions();
-  const [filters, setFilters] = useState<DiscoveryFilters>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<DiscoveryFilters>(() => ({ ...DEFAULT_FILTERS, mode: selectedWorld }));
   const [moreFilters, setMoreFilters] = useState(false);
   const [items, setItems] = useState<DiscoveryItem[]>([]);
   const [homeLocation, setHomeLocation] = useState<{ city: string; state: string } | null>(null);
@@ -53,6 +55,7 @@ export default function GoDiscover() {
   const [expanded, setExpanded] = useState(false);
   const setFilter = <K extends keyof DiscoveryFilters>(key: K, value: DiscoveryFilters[K]) =>
     setFilters(current => ({ ...current, [key]: value }));
+  useEffect(() => { setFilters(previous => ({ ...previous, mode: selectedWorld })); }, [selectedWorld]);
   useEffect(() => {
     if (routeMode === 'nature' || routeMode === 'night' || routeMode === 'all') {
       setFilters(prev => ({ ...prev, mode: routeMode, query: typeof q === 'string' ? q : '' }));
@@ -111,7 +114,7 @@ export default function GoDiscover() {
     </View>
     <View style={styles.modeRow}>
       {(['all', 'nature', 'night'] as const).map(mode =>
-        <Pressable key={mode} onPress={() => setFilter('mode', mode)}
+        <Pressable key={mode} onPress={() => { setFilter('mode', mode); if (mode !== 'all') chooseMode(mode); }}
           accessibilityRole="button" accessibilityState={{ selected: filters.mode === mode }}
           style={[styles.modePill, filters.mode === mode && (mode === 'nature' ? styles.selectedNature : mode === 'night' ? styles.selectedNight : styles.selectedAll)]}>
           <Text style={[styles.modePillText, filters.mode === mode && styles.selectedText]}>{mode === 'all' ? 'Everything' : mode === 'nature' ? '🌿 Nature' : '🌆 Nights'}</Text>
