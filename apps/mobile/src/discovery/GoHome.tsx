@@ -336,7 +336,7 @@ export default function GoHome() {
   const recentAt = recentJourney ? Date.parse(recentJourney.experienced_at) : NaN;
   const needsReflection = Number.isFinite(recentAt) && now - recentAt < 14 * 86400000
     && now - recentAt >= 0 && recentJourney?.photo_count === 0;
-  const savedCategories = new Set(myItems.filter(item => item.saved).map(item => item.category.toLowerCase()));
+  const savedCategories = useMemo(() => new Set(myItems.filter(item => item.saved).map(item => item.category.toLowerCase())), [myItems]);
   const suggestions = useMemo(() => {
     const related = myItems.filter(item => {
       if (!mood) return true;
@@ -346,7 +346,7 @@ export default function GoHome() {
       Number(savedCategories.has(b.category.toLowerCase())) - Number(savedCategories.has(a.category.toLowerCase()))
       || Number(b.featured) - Number(a.featured)
       || Date.parse(a.startsAt) - Date.parse(b.startsAt)).slice(0, 4);
-  }, [myItems, mood, modeMoodTerms, items]);
+  }, [myItems, mood, modeMoodTerms, savedCategories]);
 
   const updateSaved = (id: string, saved: boolean) =>
     setItems(current => current.map(item => item.id === id && item.source === 'adventure' ? { ...item, saved } : item));
