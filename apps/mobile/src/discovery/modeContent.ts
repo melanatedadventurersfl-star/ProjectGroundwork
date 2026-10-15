@@ -4,15 +4,15 @@ import type { DiscoveryMode } from './catalog';
 // A community without a clear theme appears in both modes. Never auto-join
 // or imply membership in a group just because its name matches a mode.
 const OUTDOOR = /adventur|outdoor|camp|hik|trail|fish|paddl|kayak|canoe|river|spring|forest|nature|beach|cycling|bik|greenway|walk|bird|lake/i;
-const URBAN = /jaxblack|night|nightlife|music|concert|jazz|art|gallery|theat|comedy|danc|brunch|dining|restaurant|food|city|urban|culture|network|rooftop|film|museum|bar|downtown/i;
+const URBAN = /jaxblack|night|nightlife|music|concert|jazz|art|gallery|theat|comedy|danc|brunch|dining|restaurant|food|city|urban|culture|network|rooftop|film|museum|bar|downtown|coffee|volunteer|workshop|shopping|trivia|history|historic/i;
 
 export function groupWorld(group: Pick<CommunityGroup, 'name' | 'description' | 'adventure_id'>): DiscoveryMode | 'shared' {
   if (group.adventure_id) return 'nature';
   const name = group.name.toLowerCase();
   if (/jaxblack/i.test(name)) return 'night';
   const text = (group.name + ' ' + (group.description ?? '')).toLowerCase();
-  if (OUTDOOR.test(text)) return 'nature';
   if (URBAN.test(text)) return 'night';
+  if (OUTDOOR.test(text)) return 'nature';
   return 'shared';
 }
 
