@@ -2,11 +2,12 @@ import { listAdventures, setAdventureSaved } from '../adventures/api';
 import type { AdventureSummary } from '../adventures/types';
 import { distanceMiles, pointForCity, type GeoPoint } from '../explore/location';
 import { listLocalEvents, type LocalEvent } from '../local-events/api';
+import { getDemoCityEvents } from './demoCityEvents';
 
 export type DiscoveryMode = 'nature' | 'night';
 export type DiscoveryItem = {
   id: string;
-  source: 'adventure' | 'local-event';
+  source: 'adventure' | 'local-event' | 'demo';
   mode: DiscoveryMode;
   title: string;
   description: string;
@@ -31,7 +32,7 @@ export type DiscoveryFilters = {
 };
 
 const NATURE_TERMS = /camp|hik|trail|kayak|paddl|spring|beach|park|nature|outdoor|fishing|fish|cycl|bike|water|forest|wildlife|river|canoe|bird|eco.tour/i;
-const CITY_TERMS = /music|concert|night|bar|food|dinner|brunch|restaurant|art|theat|comedy|dance|festival|network|market|gallery|museum|social|culture|culinary|film|movie|club|rooftop|business/i;
+const CITY_TERMS = /music|concert|night|bar|food|dinner|brunch|restaurant|art|theat|comedy|dance|festival|network|market|gallery|museum|social|culture|culinary|film|movie|club|rooftop|business|coffee|volunteer|community|workshop|shopping|trivia|history|historic/i;
 
 // Explicit city categories override the inherited outdoor-adventure fallback.
 // This classification is UI-only. A future primary_mode field should replace it.
@@ -81,6 +82,7 @@ export async function loadDiscoveryItems(): Promise<DiscoveryItem[]> {
     ...adventures.filter(event => !event.is_demo && (event.status === 'published' || event.status === 'sold_out'))
       .map(adventureToItem),
     ...localEvents.filter(event => event.status === 'published').map(localEventToItem),
+    ...getDemoCityEvents(),
   ].filter(item => {
     if (!Number.isFinite(Date.parse(item.startsAt)) || Date.parse(item.startsAt) < now) return false;
     const key = `${item.source}:${item.id}`;
