@@ -5,7 +5,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getMemberTrips, type MemberTrip } from '../../src/member/api';
 
-function statusLabel(status: string) {
+function isHoldExpired(trip: MemberTrip, now = Date.now()) {
+  return trip.status === 'held'
+    && Boolean(trip.hold_expires_at)
+    && Number.isFinite(Date.parse(trip.hold_expires_at!))
+    && Date.parse(trip.hold_expires_at!) <= now;
+}
+function statusLabel(trip: MemberTrip) {
+  if (isHoldExpired(trip)) return 'Hold expired';
+  const status = trip.status;
   if (status === 'held') return 'Reservation held';
   if (status === 'payment_pending') return 'Payment pending';
   if (status === 'paid') return 'Confirmed';
@@ -26,7 +34,12 @@ export default function TripsScreen() {
       setLoading(true);
       const trips = await getMemberTrips();
       const now = Date.now();
-      const nextUpcoming = trips.filter((trip) => trip.adventures && new Date(trip.adventures.starts_at).getTime() >= now && !['cancelled', 'refunded', 'expired'].includes(trip.status));
+      const nextUpcoming = trips.filter(trip => trip.adventures
+        && trip.adventures.status !== 'cancelled'
+        && new Date(trip.adventures.starts_at).getTime() >= now
+        && !['cancelled', 'refunded', 'expired'].includes(trip.status)
+        && (trip.status !== 'held' || (trip.hold_expires_at != null && Date.parse(trip.hold_expires_at) > now))
+        && (trip.status !== 'payment_pending' || !trip.hold_expires_at || Date.parse(trip.hold_expires_at) > now));
       const upcomingIds = new Set(nextUpcoming.map((trip) => trip.id));
       setUpcoming(nextUpcoming);
       setHistory(trips.filter((trip) => !upcomingIds.has(trip.id)));
@@ -44,23 +57,25 @@ export default function TripsScreen() {
     const adventure = trip.adventures;
     if (!adventure) return null;
     const amount = trip.total_cents === 0 ? 'Free' : `$${(trip.total_cents / 100).toFixed(2)}`;
-    const pending = trip.status === 'held' || trip.status === 'payment_pending';
+    const expiredHold = isHoldExpired(trip);
+    const pending = !expiredHold && (trip.status === 'held' || trip.status === 'payment_pending');
     return (
       <Pressable style={styles.tripCard} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: adventure.id } })}>
         {adventure.hero_image_url ? (
           <ImageBackground source={{ uri: adventure.hero_image_url }} style={styles.image} imageStyle={styles.imageRadius}>
             <View style={styles.imageShade} />
-            <Text style={styles.statusBadge}>{statusLabel(trip.status).toUpperCase()}</Text>
+            <Text style={styles.statusBadge}>{statusLabel(trip).toUpperCase()}</Text>
           </ImageBackground>
         ) : null}
         <View style={styles.tripContent}>
           <View style={styles.topLine}>
             <Text style={styles.tripTitle}>{adventure.title}</Text>
-            <Text style={[styles.status, pending && styles.pending]}>{statusLabel(trip.status)}</Text>
+            <Text style={[styles.status, pending && styles.pending]}>{statusLabel(trip)}</Text>
           </View>
           <Text style={styles.meta}>{new Date(adventure.starts_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} · {adventure.city}, {adventure.state}</Text>
           <Text style={styles.amount}>{amount}</Text>
-          {trip.status === 'held' && trip.hold_expires_at ? <Text style={styles.warning}>Hold expires {new Date(trip.hold_expires_at).toLocaleString()}</Text> : null}
+          {expiredHold ? <Text style={styles.warning}>This reservation hold has expired. Review the experience to check your options.</Text>
+            : trip.status === 'held' && trip.hold_expires_at ? <Text style={styles.warning}>Hold expires {new Date(trip.hold_expires_at).toLocaleString()}</Text> : null}
           {trip.status === 'paid' ? <Text style={styles.confirmed}>Payment confirmed{trip.paid_at ? ` · ${new Date(trip.paid_at).toLocaleDateString()}` : ''}</Text> : null}
           {pending ? <Text style={styles.note}>Stripe checkout is not connected yet, so this build can show payment state but does not process a real payment.</Text> : null}
           <Text style={styles.action}>View adventure →</Text>
