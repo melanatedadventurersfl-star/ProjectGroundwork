@@ -428,19 +428,53 @@ export default function GoHome() {
       </Pressable>
     </View>
     <View style={styles.quickTiles}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Open your communities"
-        style={[styles.quickTile, { backgroundColor: primary }]} onPress={() => router.push('/communities')}>
-        <View style={styles.quickTileIcon}><AppIcon name="community" size={23} color={accent}/></View>
-        <Text style={styles.quickTileTitle}>Your Circle</Text>
-        <Text style={styles.quickTileCopy} numberOfLines={2}>{groups.length ? groups.length + (groups.length === 1 ? ' community joined' : ' communities joined') : 'Find your people'}</Text>
-        <Text style={[styles.quickTileLink, { color: accent }]}>Connect →</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Your Circle. Open your communities"
+        style={[styles.quickTile, styles.quickCircle]} onPress={() => router.push('/communities')}>
+        {circlePhoto ? <Image source={{ uri: circlePhoto }} resizeMode="cover" style={styles.quickTilePhoto}/> : <ContourLines light/>}
+        {circlePhoto && <PhotoShade id="goHomeCircle" gentle/>}
+        <View style={styles.quickTileInner}>
+          <View style={styles.quickTop}>
+            <AppIcon name="community" color="#BEF4A4" size={23}/>
+            <Text style={styles.quickOverline}>YOUR PEOPLE</Text>
+          </View>
+          <View>
+            <Text style={styles.quickTileTitle}>Your Circle</Text>
+            <Text style={styles.quickTileCopy}>{groups.length ? groups.length + (groups.length === 1 ? ' community joined' : ' communities joined') : 'Find your community'}</Text>
+          </View>
+          <View style={styles.quickBottom}>
+            <View style={styles.faceRow}>
+              {posts.filter((post, index, all) => all.findIndex(p => p.author_id === post.author_id) === index).slice(0, 3).map(post =>
+                <View key={post.author_id} style={styles.face}>
+                  {post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.facePhoto}/> :
+                    <Text style={styles.faceInitial}>{(post.author_name || 'M').slice(0, 1).toUpperCase()}</Text>}
+                </View>)}
+            </View>
+            <Text style={styles.quickTileLink}>Connect →</Text>
+          </View>
+        </View>
       </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="Open your Trail and memories"
+      <Pressable accessibilityRole="button" accessibilityLabel="Your Trail. Open your adventure memories"
         style={[styles.quickTile, styles.quickTrail]} onPress={() => router.push('/member/journey')}>
-        <View style={styles.quickTileIconLight}><AppIcon name="trail" size={23} color="#46603D"/></View>
-        <Text style={[styles.quickTileTitle, styles.quickTrailTitle]}>Your Trail</Text>
-        <Text style={[styles.quickTileCopy, styles.quickTrailCopy]} numberOfLines={2}>{session && journey.length ? journey.length + (journey.length === 1 ? ' adventure remembered' : ' adventures remembered') : 'Your story starts here'}</Text>
-        <Text style={styles.quickTrailLink}>Your story →</Text>
+        {latestTrail ? <Image source={{ uri: latestTrail.uri }} resizeMode="cover" style={styles.quickTilePhoto}/> : <ContourLines/>}
+        {latestTrail && <PhotoShade id="goHomeTrail" gentle/>}
+        <View style={styles.quickTileInner}>
+          <View style={styles.quickTop}>
+            <AppIcon name="stamp" color={latestTrail ? '#F3DFAD' : '#4E6F50'} size={23}/>
+            <Text style={[styles.quickOverline, !latestTrail && styles.quickTrailOverline]}>YOUR STORY</Text>
+          </View>
+          <View>
+            <Text style={[styles.quickTileTitle, !latestTrail && styles.quickTrailTitle]}>Your Trail</Text>
+            <Text style={[styles.quickTileCopy, !latestTrail && styles.quickTrailCopy]}>
+              {session && journey.length ? journey.length + (journey.length === 1 ? ' adventure remembered' : ' adventures remembered') : 'Your first chapter awaits'}
+            </Text>
+          </View>
+          <View style={styles.quickBottom}>
+            <Text style={[styles.quickMilestone, !latestTrail && styles.quickTrailMilestone]}>
+              {nextMilestone && journey.length ? nextMilestone - journey.length + ' to your next milestone' : 'Your outdoor life, remembered'}
+            </Text>
+            <AppIcon name="chevron-forward" color={latestTrail ? '#FFF4E0' : '#405C45'} size={16}/>
+          </View>
+        </View>
       </Pressable>
     </View>
     {editing && <View style={styles.editor}>
@@ -502,17 +536,27 @@ const styles = StyleSheet.create({
   homeLabel: { color: '#74817A', fontWeight: '900', fontSize: 10, letterSpacing: 1.4 },
   editButton: { flexDirection: 'row', gap: 5, alignItems: 'center', paddingVertical: 7, paddingHorizontal: 9 },
   editText: { color: '#315A46', fontSize: 12, fontWeight: '800' },
-  quickTiles: { flexDirection: 'row', gap: 10, marginTop: 2, alignItems: 'stretch' },
-  quickTile: { flex: 1, minWidth: 0, minHeight: 139, borderRadius: 18, padding: 14, justifyContent: 'space-between' },
-  quickTileIcon: { width: 31, height: 31, justifyContent: 'center' },
-  quickTileIconLight: { width: 31, height: 31, justifyContent: 'center' },
-  quickTileTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 17, marginTop: 4 },
-  quickTileCopy: { color: '#E3ECE6', fontSize: 11, lineHeight: 15, marginTop: 2 },
-  quickTileLink: { fontSize: 11, fontWeight: '900', marginTop: 6 },
-  quickTrail: { backgroundColor: '#EAE9D9' },
-  quickTrailTitle: { color: '#223C2D' },
-  quickTrailCopy: { color: '#506251' },
-  quickTrailLink: { fontSize: 11, color: '#426741', fontWeight: '900', marginTop: 6 },
+  quickTiles: { flexDirection: 'row', gap: 10, marginTop: 3, alignItems: 'stretch' },
+  quickTile: { flex: 1, minWidth: 0, minHeight: 164, borderRadius: 18, overflow: 'hidden', justifyContent: 'flex-end' },
+  quickCircle: { backgroundColor: '#163F2B' },
+  quickTrail: { backgroundColor: '#EEE8D6' },
+  quickTilePhoto: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  quickTileInner: { flex: 1, justifyContent: 'space-between', padding: 14, zIndex: 1, minHeight: 164 },
+  quickTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  quickOverline: { color: '#C9E4CB', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 },
+  quickTileTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 18, marginTop: 3 },
+  quickTileCopy: { color: '#E4EFE6', fontSize: 11, lineHeight: 16, marginTop: 4 },
+  quickTileLink: { fontSize: 11, color: '#B8F29F', fontWeight: '900' },
+  quickBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 25, gap: 4 },
+  faceRow: { flexDirection: 'row', alignItems: 'center', paddingLeft: 3 },
+  face: { width: 25, height: 25, borderRadius: 13, backgroundColor: '#D7AC64', borderWidth: 2, borderColor: '#164333', marginLeft: -3, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  facePhoto: { width: '100%', height: '100%' },
+  faceInitial: { fontSize: 10, fontWeight: '900', color: '#173F2D' },
+  quickTrailOverline: { color: '#5B725B' },
+  quickTrailTitle: { color: '#243C2D' },
+  quickTrailCopy: { color: '#4F6655' },
+  quickMilestone: { fontSize: 9, fontWeight: '800', color: '#FFF0CD', flex: 1 },
+  quickTrailMilestone: { color: '#4B684D' },
   editor: { backgroundColor: '#FFF', borderColor: '#DBE2DB', borderWidth: 1, padding: 16, borderRadius: 18, marginTop: 7, gap: 9 },
   editorTitle: { fontSize: 16, fontWeight: '900', color: INK },
   editorHint: { color: MUTED, fontSize: 12, lineHeight: 18 },
