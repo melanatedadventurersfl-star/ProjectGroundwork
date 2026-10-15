@@ -193,6 +193,32 @@ export async function getMemberBadges(): Promise<MemberBadge[]> {
 
 const memoryFields = 'id, profile_id, adventure_id, memory_id, image_url, caption, reflection, visibility, featured, source_kind, source_photo_id, media_type, moderation_status, created_at';
 
+/**
+ * A lightweight, member-owned image for Home's Trail tile. It respects the
+ * member's media access and signs private storage paths on demand.
+ */
+export async function getLatestTrailPreview(): Promise<{ uri: string; adventureId: string } | null> {
+  const userId = await requireUserId();
+  const { data, error } = await supabase
+    .from('adventure_memory_photos')
+    .select('adventure_id, image_url')
+    .eq('profile_id', userId)
+    .eq('media_type', 'photo')
+    .eq('moderation_status', 'approved')
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  const row = data?.[0];
+  if (!row?.image_url || !row.adventure_id) return null;
+  const uri = String(row.image_url);
+  if (/^https?:\/\//i.test(uri)) return { uri, adventureId: String(row.adventure_id) };
+  const { data: signed, error: signError } = await supabase.storage
+    .from(MEMORY_BUCKET)
+    .createSignedUrl(uri, SIGNED_MEMORY_URL_TTL_SECONDS);
+  if (signError || !signed?.signedUrl) return null;
+  return { uri: signed.signedUrl, adventureId: String(row.adventure_id) };
+}
+
 export async function getAllMemoryPhotos(): Promise<MemoryPhoto[]> {
   const userId = await requireUserId();
   const { data, error } = await supabase

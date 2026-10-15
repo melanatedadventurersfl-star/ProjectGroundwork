@@ -5,11 +5,12 @@ import {
   ScrollView, StyleSheet, Text, View, useWindowDimensions,
 } from 'react-native';
 import Storage from 'expo-sqlite/kv-store';
+import Svg, { Defs, LinearGradient, Stop, Rect, Path } from 'react-native-svg';
 import { useAuth } from '../auth/AuthProvider';
 import { getCommunityFeed, getGroups, type CommunityPost, type CommunityGroup } from '../community/api';
 import { getMemberTrips, type MemberTrip } from '../member/api';
 import { supabase } from '../lib/supabase';
-import { getJourney, type JourneyItem } from '../passport/api';
+import { getJourney, getLatestTrailPreview, type JourneyItem } from '../passport/api';
 import { AppIcon } from '../ui/AppIcon';
 import { loadDiscoveryItems, saveDiscoveryAdventure, type DiscoveryItem } from './catalog';
 import { useGoMode } from './useGoMode';
@@ -20,6 +21,36 @@ const INK = '#0E1716';
 const MUTED = '#65706D';
 const DEFAULT_NATURE = require('../../assets/trailhead-banners/explorer-clear-morning.jpg');
 const DEFAULT_NIGHT = require('../../assets/trailhead-banners/adventurer-evening.jpg');
+const SCENIC_NATURE = require('../../assets/trailhead/explorer/explorer_clear_afternoon.png');
+
+/** Keep actual photography visible at the top, with legible copy below. */
+function PhotoShade({ id, night = false, gentle = false }: { id: string; night?: boolean; gentle?: boolean }) {
+  const color = night ? '#170D2F' : '#071B16';
+  return <Svg pointerEvents="none" style={StyleSheet.absoluteFillObject} width="100%" height="100%" preserveAspectRatio="none">
+    <Defs><LinearGradient id={id} x1="0%" y1="0%" x2="0%" y2="100%">
+      <Stop offset="0%" stopColor={color} stopOpacity={0.02}/>
+      <Stop offset="38%" stopColor={color} stopOpacity={gentle ? 0.08 : 0.23}/>
+      <Stop offset="100%" stopColor={color} stopOpacity={gentle ? 0.75 : 0.94}/>
+    </LinearGradient></Defs>
+    <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${id})`}/>
+  </Svg>;
+}
+function ContourLines({ light = false }: { light?: boolean }) {
+  const stroke = light ? '#E8C57D' : '#78A88A';
+  return <Svg pointerEvents="none" style={StyleSheet.absoluteFillObject} viewBox="0 0 180 170">
+    <Path d="M61 -26 C147 -15 155 9 124 34 C87 63 177 66 161 117 C152 143 111 130 101 191" fill="none" stroke={stroke} strokeWidth="1.5" opacity="0.28"/>
+    <Path d="M82 -32 C184 -15 180 14 143 47 C120 76 200 87 179 130 C165 156 136 153 128 193" fill="none" stroke={stroke} strokeWidth="1.5" opacity="0.24"/>
+    <Path d="M34 -26 C110 -4 120 3 94 42 C66 88 147 86 132 121 C122 145 77 155 82 198" fill="none" stroke={stroke} strokeWidth="1.5" opacity="0.22"/>
+  </Svg>;
+}
+function relativeDate(value: string) {
+  const age = Date.now() - Date.parse(value);
+  if (!Number.isFinite(age) || age < 0) return dateLabel(value);
+  if (age < 86400000) return 'Today';
+  if (age < 172800000) return 'Yesterday';
+  if (age < 7 * 86400000) return Math.floor(age / 86400000) + 'd ago';
+  return dateLabel(value);
+}
 
 function dateLabel(value: string) {
   return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -135,6 +166,7 @@ export default function GoHome() {
   const [trips, setTrips] = useState<MemberTrip[]>([]);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
+  const [trailPreview, setTrailPreview] = useState<{ uri: string; adventureId: string } | null>(null);
   const [profile, setProfile] = useState({ name: '', username: '', city: '', interests: [] as string[] });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -185,13 +217,14 @@ export default function GoHome() {
     else setLoading(true);
     setNow(Date.now());
     const userId = session?.user.id;
-    const [results, history, bookings, details, activity, memberships] = await Promise.allSettled([
+    const [results, history, bookings, details, activity, memberships, memoryImage] = await Promise.allSettled([
       loadDiscoveryItems(),
       userId ? getJourney() : Promise.resolve([] as JourneyItem[]),
       userId ? getMemberTrips() : Promise.resolve([] as MemberTrip[]),
       userId ? supabase.from('profiles').select('display_name,username,home_city,interests').eq('id', userId).maybeSingle() : Promise.resolve({ data: null }),
       userId ? getCommunityFeed() : Promise.resolve([] as CommunityPost[]),
       userId ? getGroups() : Promise.resolve([] as CommunityGroup[]),
+      userId ? getLatestTrailPreview() : Promise.resolve(null),
     ]);
     if (results.status === 'fulfilled') {
       setItems(results.value);
@@ -201,9 +234,10 @@ export default function GoHome() {
     if (memberships.status === 'fulfilled') setGroups(memberships.value.filter(group => group.is_member));
     if (activity.status === 'fulfilled' && memberships.status === 'fulfilled') {
       const myGroups = new Set(memberships.value.filter(group => group.is_member).map(group => group.id));
-      setPosts(activity.value.filter(post => myGroups.has(post.group_id || '') || (post.audience === 'everyone' && !post.group_id)).slice(0, 2));
+      setPosts(activity.value.filter(post => myGroups.has(post.group_id || '') || (post.audience === 'everyone' && !post.group_id)).slice(0, 3));
     }
     if (bookings.status === 'fulfilled') setTrips(bookings.value);
+    if (memoryImage.status === 'fulfilled') setTrailPreview(memoryImage.value);
     if (details.status === 'fulfilled' && details.value.data) {
       const data = details.value.data;
       setProfile({
@@ -231,6 +265,11 @@ export default function GoHome() {
   const actionTrip = primaryTrip?.adventures ?? null;
   const isLive = Boolean(liveTrip);
   const isPending = primaryTrip?.status === 'held' || primaryTrip?.status === 'payment_pending';
+  const circlePhoto = groups.find(group => group.cover_image_url)?.cover_image_url
+    ?? posts.find(post => post.image_url)?.image_url ?? null;
+  const groupById = new Map(groups.map(group => [group.id, group.name]));
+  const latestTrail = trailPreview && journey.some(item => item.adventure_id === trailPreview.adventureId) ? trailPreview : null;
+  const nextMilestone = [1, 5, 10, 25, 50].find(value => value > journey.length) ?? null;
   const recentJourney = journey[0] ?? null;
   const recentAt = recentJourney ? Date.parse(recentJourney.experienced_at) : NaN;
   const needsReflection = Number.isFinite(recentAt) && now - recentAt < 14 * 86400000
@@ -258,50 +297,77 @@ export default function GoHome() {
   function sectionContent(section: HomeSection) {
     if (section === 'circle') return <View key="circle" style={styles.sectionBlock}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>From your circle</Text>
-        <Pressable accessibilityRole="button" onPress={() => router.push('/communities')}>
+        <View style={styles.sectionLabelStack}>
+          <Text style={styles.overlineGold}>COMMUNITY PULSE</Text>
+          <Text style={styles.sectionTitle}>From your circle</Text>
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="See all community activity" onPress={() => router.push('/communities')}>
           <Text style={styles.seeAll}>See all →</Text>
         </Pressable>
       </View>
       {posts.length ? posts.map(post => <Pressable key={post.id} accessibilityRole="button" style={styles.pulseCard}
+        accessibilityLabel={`Community update from ${post.author_name || 'a member'}`}
         onPress={() => post.group_id ? router.push({ pathname: '/groups/[id]', params: { id: post.group_id } }) : router.push('/communities')}>
-        {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.pulsePhoto}/> :
-          <View style={styles.pulseIcon}><AppIcon name={post.post_type === 'photo' ? 'photos' : 'message'} color={primary} size={19}/></View>}
-        <View style={styles.flex}><Text style={styles.pulseAuthor}>{post.author_name || 'Community member'}</Text>
-          <Text style={styles.pulseBody} numberOfLines={2}>{post.body || (post.post_type === 'photo' ? 'Shared a photo with the community.' : 'Shared an update.')}</Text></View>
-        <AppIcon name="chevron-forward" color={MUTED} size={17}/>
+        {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.pulsePhoto}
+          resizeMode="cover" accessibilityLabel="Community photo"/> : null}
+        <View style={styles.pulseText}>
+          <View style={styles.pulseByline}>
+            {post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.pulseAvatar}/> :
+              <View style={styles.pulseInitial}><Text style={styles.pulseInitialText}>{(post.author_name || 'M').slice(0, 1).toUpperCase()}</Text></View>}
+            <View style={styles.flex}>
+              <Text style={styles.pulseAuthor} numberOfLines={1}>{post.author_name || 'Community member'}</Text>
+              <Text style={styles.pulseMeta} numberOfLines={1}>
+                {(post.group_id ? groupById.get(post.group_id) : null) || 'GO Melanated'} · {relativeDate(post.created_at)}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.pulseBody} numberOfLines={post.image_url ? 3 : 2}>
+            {post.body || (post.post_type === 'photo' ? 'Shared a moment with the community.' : 'Shared an update.')}
+          </Text>
+          {post.image_url && <Text style={styles.pulseExplore}>View story →</Text>}
+        </View>
+        {!post.image_url && <AppIcon name="chevron-forward" color={MUTED} size={17}/>}
       </Pressable>) : <Pressable accessibilityRole="button" style={styles.pulseEmpty} onPress={() => router.push('/communities')}>
-        <AppIcon name="photos" color={primary} size={25}/>
+        <View style={styles.pulseIcon}><AppIcon name="photos" color={primary} size={24}/></View>
         <View style={styles.flex}><Text style={styles.pulseAuthor}>Your people, your stories</Text>
-          <Text style={styles.pulseBody}>Explore groups and stories shared by the community.</Text></View>
+          <Text style={styles.pulseBody}>Explore shared moments from the communities you&apos;ve joined.</Text></View>
         <AppIcon name="chevron-forward" color={MUTED} size={18}/>
       </Pressable>}
     </View>;
-    if (section === 'trail') return <View key="trail" style={styles.sectionBlock}>
-      <Text style={styles.sectionTitle}>{mode === 'nature' ? 'Your story so far' : 'Your plans & memories'}</Text>
-      <View style={styles.duo}>
-        <Pressable accessibilityRole="button" style={[styles.miniTile, styles.trailTile]} onPress={() => router.push('/member/journey')}>
-          <AppIcon name="trail" color="#285F40" size={25}/>
-          <Text style={styles.miniNumber}>{session ? journey.length : '—'}</Text>
-          <Text style={styles.miniHeading}>Your Trail</Text>
-          <Text style={styles.miniBody}>{session && journey.length ? 'Adventures in your story' : 'Your next chapter starts here'}</Text>
-          <Text style={styles.miniAction}>Remember your moments →</Text>
+    if (section === 'trail') {
+      const story = journey.find(item => item.adventure_id === latestTrail?.adventureId) ?? recentJourney;
+      const nextLabel = nextMilestone ? `${nextMilestone - journey.length} more to your next chapter` : 'Your story keeps growing';
+      return <View key="trail" style={styles.sectionBlock}>
+        <View style={styles.sectionLabelStack}>
+          <Text style={styles.overlineGold}>YOUR OUTDOOR LIFE, REMEMBERED</Text>
+          <Text style={styles.sectionTitle}>{mode === 'nature' ? 'A story worth keeping' : 'The moments you made'}</Text>
+        </View>
+        <Pressable style={styles.journeySpotlight} accessibilityRole="button" accessibilityLabel="Open Your Trail"
+          onPress={() => router.push('/member/journey')}>
+          {latestTrail ? <Image source={{ uri: latestTrail.uri }} resizeMode="cover" style={styles.storyPhoto}/> : <ContourLines light/>}
+          {latestTrail && <PhotoShade id="goHomeStory" night gentle/>}
+          <View style={styles.storyContent}>
+            <View style={styles.storyRibbon}><AppIcon name="stamp" color="#F5D38A" size={20}/>
+              <Text style={styles.storyEyebrow}>{journey.length ? journey.length + ' ADVENTURES IN YOUR STORY' : 'YOUR FIRST CHAPTER AWAITS'}</Text>
+            </View>
+            <View>
+              <Text style={styles.storyTitle} numberOfLines={2}>{story?.title || 'There is a story waiting for you.'}</Text>
+              <Text style={styles.storyPlace}>{story ? [story.city, story.state].filter(Boolean).join(', ') + ' · ' + dateLabel(story.experienced_at) : 'Find an experience and start Your Trail.'}</Text>
+              <View style={styles.storyFooter}>
+                <Text style={styles.storyProgress}>{journey.length ? nextLabel : 'Make the first memory'}</Text>
+                <Text style={styles.storyLink}>Your Trail →</Text>
+              </View>
+            </View>
+          </View>
         </Pressable>
-        <Pressable accessibilityRole="button" style={[styles.miniTile, styles.planTile]} onPress={() => router.push('/member/trips')}>
-          <AppIcon name="calendar" color="#614A79" size={25}/>
-          <Text style={styles.miniNumber}>{session ? trips.filter(trip => activeBooking(trip, now)).length : '—'}</Text>
-          <Text style={styles.miniHeading}>Your plans</Text>
-          <Text style={styles.miniBody}>Upcoming reservations and experiences</Text>
-          <Text style={styles.miniAction}>See your plans →</Text>
-        </Pressable>
-      </View>
-      {needsReflection && recentJourney && <Pressable accessibilityRole="button" style={styles.reflection} onPress={() => router.push({ pathname: '/passport/memories/[adventureId]', params: { adventureId: recentJourney.adventure_id } })}>
-        <AppIcon name="camera" color="#634C2C" size={24}/>
-        <View style={styles.flex}><Text style={styles.reflectionTitle}>Keep this moment</Text>
-          <Text style={styles.reflectionCopy} numberOfLines={2}>Add memories from {recentJourney.title}.</Text></View>
-        <AppIcon name="chevron-forward" color="#634C2C" size={17}/>
-      </Pressable>}
-    </View>;
+        {needsReflection && recentJourney && <Pressable accessibilityRole="button" style={styles.reflection} onPress={() => router.push({ pathname: '/passport/memories/[adventureId]', params: { adventureId: recentJourney.adventure_id } })}>
+          <AppIcon name="camera" color="#634C2C" size={24}/>
+          <View style={styles.flex}><Text style={styles.reflectionTitle}>Keep this moment</Text>
+            <Text style={styles.reflectionCopy} numberOfLines={2}>Add memories from {recentJourney.title}.</Text></View>
+          <AppIcon name="chevron-forward" color="#634C2C" size={17}/>
+        </Pressable>}
+      </View>;
+    }
     return <View key="picks" style={styles.sectionBlock}>
       <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>A little inspiration</Text>
         <Pressable accessibilityRole="button" onPress={() => goDiscover(mode)}><Text style={styles.seeAll}>Discover →</Text></Pressable>
@@ -363,9 +429,10 @@ export default function GoHome() {
         <Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{value === 'nature' ? '🌿  Nature' : '🌙  Night'}</Text>
       </Pressable>)}</View>
     <View style={[styles.hero, { backgroundColor: primary }]}>
-      <ImageBackground source={actionTrip?.hero_image_url ? { uri: actionTrip.hero_image_url } : mode === 'nature' ? DEFAULT_NATURE : DEFAULT_NIGHT}
+      <ImageBackground source={actionTrip?.hero_image_url ? { uri: actionTrip.hero_image_url } : mode === 'nature' ? SCENIC_NATURE : DEFAULT_NIGHT}
         style={styles.heroImage} imageStyle={styles.heroCorners}>
-        <View style={[styles.heroShade, { backgroundColor: mode === 'nature' ? 'rgba(6,25,16,0.77)' : 'rgba(24,12,47,0.79)' }]}>
+        <PhotoShade id="goHomeHero" night={mode === 'night'}/>
+        <View style={styles.heroShade}>
           <Text style={[styles.heroLabel, { color: accent }]}>{isLive ? 'YOUR ADVENTURE IS LIVE' : hasBooking ? isPending ? 'RESERVATION TO REVIEW' : 'YOUR NEXT ADVENTURE' : mode === 'nature' ? 'LET’S GO OUTSIDE' : 'LET’S GO OUT'}</Text>
           <Text style={styles.heroTitle} numberOfLines={2}>{heroHeading}</Text>
           <Text style={styles.heroBody}>{heroDescription}</Text>
@@ -388,19 +455,53 @@ export default function GoHome() {
       </Pressable>
     </View>
     <View style={styles.quickTiles}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Open your communities"
-        style={[styles.quickTile, { backgroundColor: primary }]} onPress={() => router.push('/communities')}>
-        <View style={styles.quickTileIcon}><AppIcon name="community" size={23} color={accent}/></View>
-        <Text style={styles.quickTileTitle}>Your Circle</Text>
-        <Text style={styles.quickTileCopy} numberOfLines={2}>{groups.length ? groups.length + (groups.length === 1 ? ' community joined' : ' communities joined') : 'Find your people'}</Text>
-        <Text style={[styles.quickTileLink, { color: accent }]}>Connect →</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Your Circle. Open your communities"
+        style={[styles.quickTile, styles.quickCircle]} onPress={() => router.push('/communities')}>
+        {circlePhoto ? <Image source={{ uri: circlePhoto }} resizeMode="cover" style={styles.quickTilePhoto}/> : <ContourLines light/>}
+        {circlePhoto && <PhotoShade id="goHomeCircle" gentle/>}
+        <View style={styles.quickTileInner}>
+          <View style={styles.quickTop}>
+            <AppIcon name="community" color="#BEF4A4" size={23}/>
+            <Text style={styles.quickOverline}>YOUR PEOPLE</Text>
+          </View>
+          <View>
+            <Text style={styles.quickTileTitle}>Your Circle</Text>
+            <Text style={styles.quickTileCopy}>{groups.length ? groups.length + (groups.length === 1 ? ' community joined' : ' communities joined') : 'Find your community'}</Text>
+          </View>
+          <View style={styles.quickBottom}>
+            <View style={styles.faceRow}>
+              {posts.filter((post, index, all) => all.findIndex(p => p.author_id === post.author_id) === index).slice(0, 3).map(post =>
+                <View key={post.author_id} style={styles.face}>
+                  {post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.facePhoto}/> :
+                    <Text style={styles.faceInitial}>{(post.author_name || 'M').slice(0, 1).toUpperCase()}</Text>}
+                </View>)}
+            </View>
+            <Text style={styles.quickTileLink}>Connect →</Text>
+          </View>
+        </View>
       </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="Open your Trail and memories"
+      <Pressable accessibilityRole="button" accessibilityLabel="Your Trail. Open your adventure memories"
         style={[styles.quickTile, styles.quickTrail]} onPress={() => router.push('/member/journey')}>
-        <View style={styles.quickTileIconLight}><AppIcon name="trail" size={23} color="#46603D"/></View>
-        <Text style={[styles.quickTileTitle, styles.quickTrailTitle]}>Your Trail</Text>
-        <Text style={[styles.quickTileCopy, styles.quickTrailCopy]} numberOfLines={2}>{session && journey.length ? journey.length + (journey.length === 1 ? ' adventure remembered' : ' adventures remembered') : 'Your story starts here'}</Text>
-        <Text style={styles.quickTrailLink}>Your story →</Text>
+        {latestTrail ? <Image source={{ uri: latestTrail.uri }} resizeMode="cover" style={styles.quickTilePhoto}/> : <ContourLines/>}
+        {latestTrail && <PhotoShade id="goHomeTrail" gentle/>}
+        <View style={styles.quickTileInner}>
+          <View style={styles.quickTop}>
+            <AppIcon name="stamp" color={latestTrail ? '#F3DFAD' : '#4E6F50'} size={23}/>
+            <Text style={[styles.quickOverline, !latestTrail && styles.quickTrailOverline]}>YOUR STORY</Text>
+          </View>
+          <View>
+            <Text style={[styles.quickTileTitle, !latestTrail && styles.quickTrailTitle]}>Your Trail</Text>
+            <Text style={[styles.quickTileCopy, !latestTrail && styles.quickTrailCopy]}>
+              {session && journey.length ? journey.length + (journey.length === 1 ? ' adventure remembered' : ' adventures remembered') : 'Your first chapter awaits'}
+            </Text>
+          </View>
+          <View style={styles.quickBottom}>
+            <Text style={[styles.quickMilestone, !latestTrail && styles.quickTrailMilestone]}>
+              {nextMilestone && journey.length ? nextMilestone - journey.length + ' to your next milestone' : 'Your outdoor life, remembered'}
+            </Text>
+            <AppIcon name="chevron-forward" color={latestTrail ? '#FFF4E0' : '#405C45'} size={16}/>
+          </View>
+        </View>
       </Pressable>
     </View>
     {editing && <View style={styles.editor}>
@@ -447,8 +548,8 @@ const styles = StyleSheet.create({
   modeButton: { flex: 1, paddingVertical: 7, borderRadius: 14, alignItems: 'center', minHeight: 41, justifyContent: 'center' },
   modeText: { color: '#6B7371', fontSize: 14, fontWeight: '700' }, modeTextActive: { color: INK, fontWeight: '900' },
   hero: { borderRadius: 21, overflow: 'hidden', marginBottom: 0 },
-  heroImage: { minHeight: 187, justifyContent: 'flex-end' }, heroCorners: { borderRadius: 21 },
-  heroShade: { paddingHorizontal: 18, paddingVertical: 16, paddingTop: 22, minHeight: 187, justifyContent: 'flex-end' },
+  heroImage: { minHeight: 199, justifyContent: 'flex-end' }, heroCorners: { borderRadius: 21 },
+  heroShade: { paddingHorizontal: 18, paddingVertical: 16, paddingTop: 27, minHeight: 199, justifyContent: 'flex-end' },
   heroLabel: { fontSize: 9, fontWeight: '900', letterSpacing: 1.3, marginBottom: 4 },
   heroTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 23, lineHeight: 27, maxWidth: 530 },
   heroBody: { color: '#F4F5EC', fontSize: 12, lineHeight: 17, marginTop: 5, maxWidth: 480 },
@@ -462,17 +563,27 @@ const styles = StyleSheet.create({
   homeLabel: { color: '#74817A', fontWeight: '900', fontSize: 10, letterSpacing: 1.4 },
   editButton: { flexDirection: 'row', gap: 5, alignItems: 'center', paddingVertical: 7, paddingHorizontal: 9 },
   editText: { color: '#315A46', fontSize: 12, fontWeight: '800' },
-  quickTiles: { flexDirection: 'row', gap: 10, marginTop: 2, alignItems: 'stretch' },
-  quickTile: { flex: 1, minWidth: 0, minHeight: 139, borderRadius: 18, padding: 14, justifyContent: 'space-between' },
-  quickTileIcon: { width: 31, height: 31, justifyContent: 'center' },
-  quickTileIconLight: { width: 31, height: 31, justifyContent: 'center' },
-  quickTileTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 17, marginTop: 4 },
-  quickTileCopy: { color: '#E3ECE6', fontSize: 11, lineHeight: 15, marginTop: 2 },
-  quickTileLink: { fontSize: 11, fontWeight: '900', marginTop: 6 },
-  quickTrail: { backgroundColor: '#EAE9D9' },
-  quickTrailTitle: { color: '#223C2D' },
-  quickTrailCopy: { color: '#506251' },
-  quickTrailLink: { fontSize: 11, color: '#426741', fontWeight: '900', marginTop: 6 },
+  quickTiles: { flexDirection: 'row', gap: 10, marginTop: 3, alignItems: 'stretch' },
+  quickTile: { flex: 1, minWidth: 0, minHeight: 164, borderRadius: 18, overflow: 'hidden', justifyContent: 'flex-end' },
+  quickCircle: { backgroundColor: '#163F2B' },
+  quickTrail: { backgroundColor: '#EEE8D6' },
+  quickTilePhoto: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  quickTileInner: { flex: 1, justifyContent: 'space-between', padding: 14, zIndex: 1, minHeight: 164 },
+  quickTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  quickOverline: { color: '#C9E4CB', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 },
+  quickTileTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 18, marginTop: 3 },
+  quickTileCopy: { color: '#E4EFE6', fontSize: 11, lineHeight: 16, marginTop: 4 },
+  quickTileLink: { fontSize: 11, color: '#B8F29F', fontWeight: '900' },
+  quickBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 25, gap: 4 },
+  faceRow: { flexDirection: 'row', alignItems: 'center', paddingLeft: 3 },
+  face: { width: 25, height: 25, borderRadius: 13, backgroundColor: '#D7AC64', borderWidth: 2, borderColor: '#164333', marginLeft: -3, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  facePhoto: { width: '100%', height: '100%' },
+  faceInitial: { fontSize: 10, fontWeight: '900', color: '#173F2D' },
+  quickTrailOverline: { color: '#5B725B' },
+  quickTrailTitle: { color: '#243C2D' },
+  quickTrailCopy: { color: '#4F6655' },
+  quickMilestone: { fontSize: 9, fontWeight: '800', color: '#FFF0CD', flex: 1 },
+  quickTrailMilestone: { color: '#4B684D' },
   editor: { backgroundColor: '#FFF', borderColor: '#DBE2DB', borderWidth: 1, padding: 16, borderRadius: 18, marginTop: 7, gap: 9 },
   editorTitle: { fontSize: 16, fontWeight: '900', color: INK },
   editorHint: { color: MUTED, fontSize: 12, lineHeight: 18 },
@@ -492,20 +603,31 @@ const styles = StyleSheet.create({
   lightEyebrow: { color: '#A9C7B6', fontSize: 9, fontWeight: '900', letterSpacing: 1.4 },
   circleTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '900', marginTop: 4 },
   circleBody: { color: '#DDE7DF', fontSize: 12, lineHeight: 19, marginTop: 14 },
-  pulseCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 13, borderRadius: 14, gap: 10 },
-  pulseEmpty: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 13, borderRadius: 14, gap: 10, minHeight: 83 },
-  pulsePhoto: { width: 66, height: 59, borderRadius: 11 },
-  pulseIcon: { borderRadius: 12, padding: 10, backgroundColor: '#E6F1E9' },
-  pulseAuthor: { color: INK, fontWeight: '900', fontSize: 12 },
-  pulseBody: { color: MUTED, marginTop: 3, lineHeight: 17, fontSize: 12 },
-  circleAction: { fontWeight: '900', fontSize: 12, marginTop: 11 },
-  duo: { flexDirection: 'row', gap: 10 },
-  miniTile: { flex: 1, borderRadius: 20, padding: 16, minHeight: 185, justifyContent: 'space-between' },
-  trailTile: { backgroundColor: '#E4F1E2' }, planTile: { backgroundColor: '#EDE5F5' },
-  miniNumber: { color: INK, fontSize: 27, fontWeight: '900', marginTop: 10 },
-  miniHeading: { color: INK, fontSize: 16, fontWeight: '900', marginTop: 4 },
-  miniBody: { color: '#4A5854', fontSize: 11, lineHeight: 16, marginTop: 5 },
-  miniAction: { color: '#2F6A4E', fontSize: 10, fontWeight: '900', marginTop: 11 },
+  overlineGold: { color: '#8B7448', fontSize: 9, letterSpacing: 1.4, fontWeight: '900', marginBottom: 4 },
+  sectionLabelStack: { gap: 1, flex: 1 },
+  pulseCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 17, overflow: 'hidden', minHeight: 83, borderWidth: 1, borderColor: '#E8E9E3', gap: 0 },
+  pulseEmpty: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 13, borderRadius: 16, gap: 10, minHeight: 86 },
+  pulsePhoto: { width: 118, alignSelf: 'stretch', minHeight: 112 },
+  pulseText: { flex: 1, padding: 12, gap: 8 },
+  pulseByline: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  pulseAvatar: { height: 29, width: 29, borderRadius: 15 },
+  pulseInitial: { height: 29, width: 29, borderRadius: 15, backgroundColor: '#E8EFE7', alignItems: 'center', justifyContent: 'center' },
+  pulseInitialText: { color: '#255B42', fontWeight: '900', fontSize: 13 },
+  pulseIcon: { borderRadius: 13, padding: 10, backgroundColor: '#E6F1E9' },
+  pulseAuthor: { color: INK, fontWeight: '900', fontSize: 13 },
+  pulseMeta: { color: '#7C867F', fontSize: 10, marginTop: 2 },
+  pulseBody: { color: '#3D4943', lineHeight: 18, fontSize: 13 },
+  pulseExplore: { color: '#2C6C50', fontSize: 11, fontWeight: '900' },
+  journeySpotlight: { backgroundColor: '#213F34', borderRadius: 20, minHeight: 209, overflow: 'hidden' },
+  storyPhoto: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  storyContent: { flex: 1, minHeight: 209, padding: 19, justifyContent: 'space-between' },
+  storyRibbon: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  storyEyebrow: { color: '#F3D998', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  storyTitle: { color: '#FFFFFF', fontSize: 22, fontWeight: '900', lineHeight: 26 },
+  storyPlace: { color: '#E8ECE6', fontSize: 12, marginTop: 5 },
+  storyFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 17, gap: 12 },
+  storyProgress: { color: '#F5E1A8', fontSize: 11, fontWeight: '800', flexShrink: 1 },
+  storyLink: { color: '#BBF0A4', fontSize: 11, fontWeight: '900' },
   reflection: { backgroundColor: '#F6EBCD', borderRadius: 17, padding: 14, gap: 12, alignItems: 'center', flexDirection: 'row' },
   reflectionTitle: { color: '#463A22', fontWeight: '900', fontSize: 14 },
   reflectionCopy: { color: '#685D49', fontSize: 12, marginTop: 4 },
