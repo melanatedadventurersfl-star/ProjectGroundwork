@@ -26,6 +26,7 @@ const distanceButtons: { key: number | null; label: string }[] = [
 ];
 function openItem(item: DiscoveryItem) {
   if (item.source === 'adventure') router.push({ pathname: '/adventures/[id]', params: { id: item.id } });
+  else if (item.source === 'demo') router.push({ pathname: '/demo-events/[id]', params: { id: item.id } });
   else router.push({ pathname: '/local-events/[id]', params: { id: item.id } });
 }
 function dateLabel(value: string) {
@@ -87,7 +88,7 @@ export default function GoDiscover() {
   const nearYou = useMemo(() => center ? [...visible].filter(item => item.point)
     .sort((a, b) => distanceMiles(center, a.point!) - distanceMiles(center, b.point!)).slice(0, 5) : [], [visible, center]);
   const upcoming = useMemo(() => [...visible].sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt)), [visible]);
-  const activeLabel = filters.mode === 'all' ? 'Everything' : filters.mode === 'nature' ? 'Nature' : 'Night';
+  const activeLabel = filters.mode === 'all' ? 'Everything' : filters.mode === 'nature' ? 'Nature' : 'Nights';
   const tileWidth = Math.min(width * 0.60, 250);
   const onSavedChange = (id: string, saved: boolean) =>
     setItems(current => current.map(item => item.id === id && item.source === 'adventure' ? { ...item, saved } : item));
@@ -113,7 +114,7 @@ export default function GoDiscover() {
         <Pressable key={mode} onPress={() => setFilter('mode', mode)}
           accessibilityRole="button" accessibilityState={{ selected: filters.mode === mode }}
           style={[styles.modePill, filters.mode === mode && (mode === 'nature' ? styles.selectedNature : mode === 'night' ? styles.selectedNight : styles.selectedAll)]}>
-          <Text style={[styles.modePillText, filters.mode === mode && styles.selectedText]}>{mode === 'all' ? 'Everything' : mode === 'nature' ? '🌿 Nature' : '🌙 Night'}</Text>
+          <Text style={[styles.modePillText, filters.mode === mode && styles.selectedText]}>{mode === 'all' ? 'Everything' : mode === 'nature' ? '🌿 Nature' : '🌆 Nights'}</Text>
         </Pressable>)}
     </View>
     <View style={styles.filterToolbar}>
@@ -183,9 +184,9 @@ export default function GoDiscover() {
           <AppIcon name={item.mode === 'nature' ? 'trail' : 'calendar'} color={item.mode === 'nature' ? '#26683D' : '#6F3BA2'} size={19}/>
         </View>
         <View style={styles.flex}>
-          <Text style={styles.resultName} numberOfLines={2}>{item.title}</Text>
+          <Text style={styles.resultName} numberOfLines={2}>{item.title}{item.source === 'demo' ? ' · DEMO' : ''}</Text>
           <Text style={styles.resultMeta}>{dateLabel(item.startsAt)} · {item.city}, {item.state}</Text>
-          <Text style={styles.resultMeta}>{item.priceLabel} · {item.mode === 'nature' ? 'Nature' : 'Night'}</Text>
+          <Text style={styles.resultMeta}>{item.priceLabel} · {item.mode === 'nature' ? 'Nature' : 'Nights'}</Text>
         </View>
         <AppIcon name="chevron-forward" size={19} color={MUTED}/>
       </Pressable>)}
@@ -205,7 +206,7 @@ export default function GoDiscover() {
         <AppIcon name="sparkles" color="#33759A" size={25}/>
         <View style={styles.flex}>
           <Text style={styles.tryTitle}>Try something different</Text>
-          <Text style={styles.helper}>Switch between Nature and Night to discover a different kind of outing.</Text>
+          <Text style={styles.helper}>Switch between Nature and Nights to explore the city, from morning coffee to evening music.</Text>
         </View>
       </View>}
       <Pressable style={styles.communityLink} onPress={() => router.push('/communities')}>
