@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Image, Pressable, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { BadgeArt, hasBadgeArt } from '../passport/BadgeArt';
@@ -8,10 +8,94 @@ import type { MemberBadge } from '../passport/api';
 import { RankEmblem, type RankName } from '../passport/RankEmblem';
 import { AppIcon } from '../ui/AppIcon';
 import type { WeatherForecast } from '../weather/api';
-import { backgroundFor, dayPhaseFor, glyph, normalizeWeather, rankThemes } from './trailheadBannerConfig';
+import { backgroundFor, dayPhaseFor, glyph, normalizeWeather, rankThemes, type DayPhase, type WeatherTheme } from './trailheadBannerConfig';
 
 const FALLBACK_NATURE = require('../../assets/trailhead/explorer/explorer_clear_afternoon.png');
 const FALLBACK_CITY = require('../../assets/onboarding/onboarding-people.jpg');
+
+const STARS = [8, 23, 39, 55, 69, 81, 94] as const;
+const RAIN = Array.from({ length: 16 }, (_, index) => index);
+
+function TrailheadAtmosphere({ weather, phase, mode }: { weather: WeatherTheme; phase: DayPhase; mode: 'nature' | 'night' }) {
+  const [haze] = useState(() => new Animated.Value(0));
+  const [light] = useState(() => new Animated.Value(0));
+  const [rainfall] = useState(() => new Animated.Value(0));
+  const [flash] = useState(() => new Animated.Value(0));
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const storm = weather === 'storm';
+  const rainy = weather === 'rain' || storm;
+  const afterDark = phase === 'night';
+  const atmosphereTint = mode === 'night' ? '#755091' : afterDark ? '#374F7A' : '#E5C383';
+
+  useEffect(() => {
+    let alive = true;
+    if (typeof AccessibilityInfo.isReduceMotionEnabled === 'function') {
+      void AccessibilityInfo.isReduceMotionEnabled().then(value => {
+        if (alive) setReduceMotion(value);
+      }).catch(() => { /* Keep the ambient effects subtle when a browser does not expose this setting. */ });
+    }
+    const subscription = typeof AccessibilityInfo.addEventListener === 'function'
+      ? AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion)
+      : null;
+    return () => { alive = false; subscription?.remove(); };
+  }, []);
+
+  useEffect(() => {
+    haze.setValue(0);
+    light.setValue(0);
+    rainfall.setValue(0);
+    flash.setValue(0);
+    if (reduceMotion) return;
+    const animations: Animated.CompositeAnimation[] = [
+      Animated.loop(Animated.sequence([
+        Animated.timing(haze, { toValue: 1, duration: 11000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(haze, { toValue: 0, duration: 11000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])),
+      Animated.loop(Animated.sequence([
+        Animated.timing(light, { toValue: 1, duration: 3200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(light, { toValue: 0, duration: 3200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])),
+    ];
+    if (rainy) animations.push(Animated.loop(Animated.timing(rainfall, {
+      toValue: 1, duration: storm ? 850 : 1400, easing: Easing.linear, useNativeDriver: true,
+    })));
+    if (storm) animations.push(Animated.loop(Animated.sequence([
+      Animated.delay(5500),
+      Animated.timing(flash, { toValue: 0.20, duration: 90, useNativeDriver: true }),
+      Animated.timing(flash, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.delay(600),
+    ])));
+    animations.forEach(animation => animation.start());
+    return () => animations.forEach(animation => animation.stop());
+  }, [reduceMotion, rainy, storm, haze, light, rainfall, flash]);
+
+  return <View pointerEvents="none" style={styles.atmosphereLayer}>
+    <Animated.View style={[styles.haze, {
+      backgroundColor: mode === 'night' ? '#9B7AC3' : '#B0BEAB',
+      opacity: reduceMotion ? 0.035 : haze.interpolate({ inputRange: [0, 1], outputRange: [0.025, 0.075] }),
+      transform: [{ translateX: reduceMotion ? 0 : haze.interpolate({ inputRange: [0, 1], outputRange: [-40, 40] }) }],
+    }]} />
+    <Animated.View style={[styles.ambientLight, {
+      backgroundColor: atmosphereTint,
+      opacity: reduceMotion ? 0.055 : light.interpolate({ inputRange: [0, 1], outputRange: [0.025, 0.10] }),
+    }]} />
+    {afterDark && STARS.map((left, index) => <Animated.View key={'star-' + index}
+      style={[styles.star, { left: left + '%', top: 8 + (index % 3) * 11,
+        opacity: reduceMotion ? 0.35 : light.interpolate({ inputRange: [0, 1], outputRange: [0.16, 0.50] }),
+      }]} />)}
+    {rainy && RAIN.map(index => <Animated.View key={'rain-' + index}
+      style={[styles.raindrop, {
+        left: ((index * 17.7) % 96) + '%',
+        top: ((index * 31) % 145) - 34,
+        height: 11 + index % 12,
+        opacity: storm ? 0.39 : 0.25,
+        transform: [{ rotate: '-15deg' }, {
+          translateY: reduceMotion ? 0 : rainfall.interpolate({ inputRange: [0, 1], outputRange: [0, 230] }),
+        }],
+      }]} />)}
+    {storm && <Animated.View style={[styles.lightning, { opacity: reduceMotion ? 0 : flash }]} />}
+  </View>;
+}
 
 type Props = {
   displayName: string;
@@ -28,9 +112,14 @@ type Props = {
 
 export function GoTrailheadScene({ displayName, greeting, rank, badges, weather, mode, homeCity, homeState, coverUrl, nightImage }: Props) {
   const [imageFailed, setImageFailed] = useState(false);
+  const [sceneTime, setSceneTime] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setSceneTime(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
   const weatherTheme = weather ? normalizeWeather(weather.current.condition.text) : 'clear';
   // Nights includes city experiences throughout the day, not just evening events.
-  const phase = dayPhaseFor(weather);
+  const phase = dayPhaseFor(weather, sceneTime);
   const background: ImageSourcePropType = mode === 'night'
     ? nightImage ? { uri: nightImage } : coverUrl ? { uri: coverUrl } : FALLBACK_CITY
     : coverUrl ? { uri: coverUrl } : backgroundFor(rank, weatherTheme, phase);
@@ -48,12 +137,13 @@ export function GoTrailheadScene({ displayName, greeting, rank, badges, weather,
     <View style={styles.wrapper}>
       <View style={styles.cover}>
         <Image source={source} resizeMode="cover" style={styles.background} onError={() => setImageFailed(true)} accessibilityLabel="Rank and weather themed Trailhead landscape" />
+        <TrailheadAtmosphere weather={weatherTheme} phase={phase} mode={mode} />
         <Svg pointerEvents="none" style={StyleSheet.absoluteFillObject} width="100%" height="100%">
           <Defs>
             <LinearGradient id="goTrailheadShade" x1="0%" y1="0%" x2="0%" y2="100%">
-              <Stop offset="0%" stopColor="#071610" stopOpacity="0.21" />
-              <Stop offset="43%" stopColor="#071610" stopOpacity="0.38" />
-              <Stop offset="100%" stopColor={mode === 'night' ? '#140C23' : '#0A2019'} stopOpacity="0.86" />
+              <Stop offset="0%" stopColor={mode === 'night' ? '#130B27' : '#071610'} stopOpacity="0.52" />
+              <Stop offset="43%" stopColor={mode === 'night' ? '#130B27' : '#071610'} stopOpacity="0.37" />
+              <Stop offset="100%" stopColor={mode === 'night' ? '#140C23' : '#0A2019'} stopOpacity="0.84" />
             </LinearGradient>
           </Defs>
           <Rect width="100%" height="100%" fill="url(#goTrailheadShade)" />
@@ -127,6 +217,12 @@ const styles = StyleSheet.create({
   wrapper: { borderRadius: 21, overflow: 'hidden', backgroundColor: '#F1E9D7', marginBottom: 7 },
   cover: { minHeight: 239, overflow: 'hidden', backgroundColor: '#173C35' },
   background: { ...StyleSheet.absoluteFillObject, height: '100%', width: '100%' },
+  atmosphereLayer: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
+  haze: { position: 'absolute', left: -40, top: 25, width: '120%', height: 110, borderRadius: 75 },
+  ambientLight: { position: 'absolute', right: -95, top: -125, width: 330, height: 330, borderRadius: 165 },
+  star: { position: 'absolute', width: 2.5, height: 2.5, borderRadius: 2, backgroundColor: '#FFFFFF' },
+  raindrop: { position: 'absolute', width: 1.4, borderRadius: 2, backgroundColor: '#DBEFF7' },
+  lightning: { ...StyleSheet.absoluteFillObject, backgroundColor: '#F8FCFF' },
   sceneBody: { flex: 1, minHeight: 239, paddingHorizontal: 15, paddingTop: 15, paddingBottom: 16, justifyContent: 'space-between' },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
   rankCluster: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, minHeight: 72 },
