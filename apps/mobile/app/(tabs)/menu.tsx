@@ -5,6 +5,8 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../src/auth/AuthProvider';
+import { useGoTheme } from '../../src/theme/useGoTheme';
+import type { AppearancePreference } from '../../src/theme/appearancePreference';
 import { supabase } from '../../src/lib/supabase';
 import { getWorkspaceAccess, type WorkspaceAccess } from '../../src/navigation/workspaceAccess';
 import { setPendingTrailheadTooltip } from '../../src/onboarding/trailheadExperience';
@@ -30,6 +32,7 @@ type UpdateState = 'idle' | 'checking' | 'current' | 'available' | 'installing' 
 
 export default function MenuScreen() {
   const { session, signOut } = useAuth();
+  const { appearance, preference, chooseAppearance, palette } = useGoTheme(session?.user.id);
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState('');
   const [inviteCount, setInviteCount] = useState<number | null>(null);
@@ -233,30 +236,30 @@ export default function MenuScreen() {
         : 'Check for Updates';
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.eyebrow}>MEMBER HUB</Text>
-        <Text style={styles.title}>Menu</Text>
-        <Text style={styles.subtitle}>Your account, membership and Go Melanated settings.</Text>
+        <Text style={[styles.eyebrow, { color: palette.accent }]}>MEMBER HUB</Text>
+        <Text style={[styles.title, { color: palette.text }]}>Menu</Text>
+        <Text style={[styles.subtitle, { color: palette.muted }]}>Your account, membership and Go Melanated settings.</Text>
 
-        <Pressable style={styles.profileCard} onPress={() => openRoute('/member/profile')}>
+        <Pressable style={[styles.profileCard, { backgroundColor: palette.surface, borderColor: palette.border }]} onPress={() => openRoute('/member/profile')}>
           <View style={styles.avatar}><Text style={styles.avatarText}>{initials}</Text></View>
           <View style={styles.profileCopy}>
-            <Text style={styles.profileName} numberOfLines={1}>{displayName}</Text>
+            <Text style={[styles.profileName, { color: palette.text }]} numberOfLines={1}>{displayName}</Text>
             <View style={styles.memberLine}>
               <AppIcon name="badge" color="#D7B45A" size={16} />
-              <Text style={styles.memberLabel}>Go Melanated Member</Text>
+              <Text style={[styles.memberLabel, { color: palette.accent }]}>Go Melanated Member</Text>
             </View>
           </View>
           <View style={styles.profileAction}>
-            <Text style={styles.profileActionText}>View Profile</Text>
+            <Text style={[styles.profileActionText, { color: palette.accent }]}>View Profile</Text>
             <AppIcon name="chevron-forward" color="#D7B45A" size={17} />
           </View>
         </Pressable>
 
         {isPlatformAdmin ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{isFounder ? 'Founder' : 'Admin'}</Text>
+            <Text style={[styles.sectionTitle, { color: palette.accent }]}>{isFounder ? 'Founder' : 'Admin'}</Text>
             <Pressable style={styles.founderCard} onPress={() => openRoute('/founder-tools')}>
               <View style={styles.founderIcon}><AppIcon name="badge" color="#F5C341" size={24} /></View>
               <View style={styles.founderCopy}>
@@ -273,60 +276,73 @@ export default function MenuScreen() {
         ) : null}
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Update & Build</Text>
-          <View style={styles.buildCard}>
+          <Text style={[styles.sectionTitle, { color: palette.accent }]}>Update & Build</Text>
+          <View style={[styles.buildCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
             <View style={styles.buildHeader}>
               <View style={styles.buildHeaderCopy}>
-                <Text style={styles.buildTitle}>Go Melanated {buildInfo.appVersion}</Text>
-                <Text style={styles.buildMeta}>Native {buildInfo.nativeBuildNumber} · CI {buildInfo.ciBuildNumber} · {buildInfo.activeSource.toUpperCase()}</Text>
+                <Text style={[styles.buildTitle, { color: palette.text }]}>Go Melanated {buildInfo.appVersion}</Text>
+                <Text style={[styles.buildMeta, { color: palette.muted }]}>Native {buildInfo.nativeBuildNumber} · CI {buildInfo.ciBuildNumber} · {buildInfo.activeSource.toUpperCase()}</Text>
               </View>
               <View style={styles.buildPill}><Text style={styles.buildPillText}>{buildInfo.channel}</Text></View>
             </View>
 
-            <View style={styles.buildDetailRow}><Text style={styles.buildDetailLabel}>Commit</Text><Text style={styles.buildDetailValue}>{buildInfo.shortCommit || 'Unknown'}</Text></View>
-            <View style={styles.buildDetailRow}><Text style={styles.buildDetailLabel}>Runtime</Text><Text style={styles.buildDetailValue}>{buildInfo.runtimeVersion}</Text></View>
+            <View style={styles.buildDetailRow}><Text style={styles.buildDetailLabel}>Commit</Text><Text style={[styles.buildDetailValue, { color: palette.text }]}>{buildInfo.shortCommit || 'Unknown'}</Text></View>
+            <View style={styles.buildDetailRow}><Text style={styles.buildDetailLabel}>Runtime</Text><Text style={[styles.buildDetailValue, { color: palette.text }]}>{buildInfo.runtimeVersion}</Text></View>
 
             <Pressable disabled={updateBusy} style={[styles.updateButton, updateState === 'available' && styles.updateButtonReady]} onPress={() => void (updateState === 'available' ? installUpdate() : checkForUpdate())}>
               {updateBusy ? <ActivityIndicator size="small" color="#0B100D" /> : <AppIcon name="about" color="#0B100D" size={17} />}
               <Text style={styles.updateButtonText}>{updateActionLabel}</Text>
             </Pressable>
-            {updateMessage ? <Text style={styles.buildStatus}>{updateMessage}</Text> : null}
+            {updateMessage ? <Text style={[styles.buildStatus, { color: palette.muted }]}>{updateMessage}</Text> : null}
           </View>
         </View>
 
-        <MenuSection title="Your Go Melanated" rows={yourGoRows} onPress={handleRow} />
-        <MenuSection title="Preferences" rows={preferenceRows} onPress={handleRow} />
-        <MenuSection title="Help & Safety" rows={helpRows} onPress={handleRow} />
-        <MenuSection title="App" rows={appRows} onPress={handleRow} />
-        <MenuSection title="Account" rows={accountRows} onPress={handleRow} busy={signingOut} />
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: palette.accent }]}>Appearance</Text>
+          <Text style={[styles.appearanceNote, { color: palette.muted }]}>Automatic follows your local time, 6 AM to 6 PM for Day, and Dark otherwise. Your experience stays the same.</Text>
+          <View style={[styles.appearanceChoices, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+            {(['auto', 'day', 'dark'] as const).map(value =>
+              <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: preference === value }}
+                onPress={() => chooseAppearance(value as AppearancePreference)}
+                style={[styles.appearanceChoice, preference === value && { backgroundColor: palette.elevated, borderColor: palette.accent }]}>
+                <Text style={[styles.appearanceChoiceLabel, { color: palette.text }]}>{value === 'auto' ? 'Automatic' : value === 'day' ? 'Day' : 'Dark'}</Text>
+              </Pressable>)}
+          </View>
+          <Text style={[styles.appearanceNote, { color: palette.muted }]}>Current appearance: {appearance === 'day' ? 'Day' : 'Dark'}</Text>
+        </View>
+        <MenuSection palette={palette} title="Your Go Melanated" rows={yourGoRows} onPress={handleRow} />
+        <MenuSection palette={palette} title="Preferences" rows={preferenceRows} onPress={handleRow} />
+        <MenuSection palette={palette} title="Help & Safety" rows={helpRows} onPress={handleRow} />
+        <MenuSection palette={palette} title="App" rows={appRows} onPress={handleRow} />
+        <MenuSection palette={palette} title="Account" rows={accountRows} onPress={handleRow} busy={signingOut} />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Text style={styles.footer}>Go Melanated</Text>
+        <Text style={[styles.footer, { color: palette.muted }]}>Go Melanated</Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function MenuSection({ title, rows, onPress, busy = false }: { title: string; rows: MenuRow[]; onPress: (row: MenuRow) => void | Promise<void>; busy?: boolean }) {
+function MenuSection({ title, rows, onPress, busy = false, palette }: { title: string; rows: MenuRow[]; onPress: (row: MenuRow) => void | Promise<void>; busy?: boolean; palette: { surface: string; text: string; muted: string; accent: string; border: string } }) {
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.card}>
+      <Text style={[styles.sectionTitle, { color: palette.accent }]}>{title}</Text>
+      <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.border }]}>
         {rows.map((row, index) => {
           const rowBusy = busy && (row.action === 'check-update' || row.action === 'install-update' || row.action === 'sign-out');
           return (
-            <Pressable key={row.label} disabled={rowBusy} style={[styles.row, index > 0 && styles.divider]} onPress={() => void onPress(row)}>
+            <Pressable key={row.label} disabled={rowBusy} style={[styles.row, index > 0 && styles.divider, { borderTopColor: palette.border }]} onPress={() => void onPress(row)}>
               <View style={styles.rowLead}>
-                <View style={styles.rowIcon}><AppIcon name={row.icon} color={row.destructive ? '#FF6B61' : '#F6F4EE'} size={20} /></View>
+                <View style={styles.rowIcon}><AppIcon name={row.icon} color={row.destructive ? '#FF6B61' : palette.text} size={20} /></View>
                 <View style={styles.rowTextWrap}>
-                  <Text style={[styles.rowTitle, row.destructive && styles.destructiveText]}>{row.label}</Text>
-                  {row.meta ? <Text style={styles.rowMeta}>{row.meta}</Text> : null}
+                  <Text style={[styles.rowTitle, { color: palette.text }, row.destructive && styles.destructiveText]}>{row.label}</Text>
+                  {row.meta ? <Text style={[styles.rowMeta, { color: palette.muted }]}>{row.meta}</Text> : null}
                 </View>
               </View>
               <View style={styles.rowTail}>
                 {rowBusy ? <ActivityIndicator size="small" color="#D7B45A" /> : null}
                 {!rowBusy && row.badge ? <View style={styles.badge}><Text style={styles.badgeText}>{row.badge}</Text></View> : null}
-                {!rowBusy ? <AppIcon name="chevron-forward" color={row.destructive ? '#FF6B61' : '#AEB8B2'} size={18} /> : null}
+                {!rowBusy ? <AppIcon name="chevron-forward" color={row.destructive ? '#FF6B61' : palette.muted} size={18} /> : null}
               </View>
             </Pressable>
           );
@@ -338,6 +354,10 @@ function MenuSection({ title, rows, onPress, busy = false }: { title: string; ro
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0B100D' },
+  appearanceNote: { fontSize: 12, lineHeight: 18, marginBottom: 9 },
+  appearanceChoices: { flexDirection: 'row', gap: 8, padding: 7, borderWidth: 1, borderRadius: 16, marginBottom: 8 },
+  appearanceChoice: { flex: 1, minHeight: 45, alignItems: 'center', justifyContent: 'center', borderRadius: 11, borderWidth: 1, borderColor: 'transparent' },
+  appearanceChoiceLabel: { fontSize: 12, fontWeight: '900' },
   content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 52 },
   eyebrow: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1.2, fontSize: 11 },
   title: { color: '#FFF8E8', fontSize: 38, lineHeight: 44, fontWeight: '900', marginTop: 4 },
