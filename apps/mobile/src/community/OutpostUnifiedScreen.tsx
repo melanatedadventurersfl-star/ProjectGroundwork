@@ -28,7 +28,7 @@ import { getConnections, type Connection } from './circles';
 import { isPeopleCommunity, communityOwnershipLabel } from './communityModel';
 import { FeaturedCampfireCarousel } from './FeaturedCampfireCarousel';
 import { PostEngagementBar } from './PostEngagementBar';
-import { selectFeaturedPosts, selectSecondaryFeed } from './featuredPosts';
+import { selectFeaturedPosts } from './featuredPosts';
 
 type ThemePalette = { background: string; surface: string; elevated: string; border: string; text: string; muted: string; accent: string };
 const GOLD = '#D7B45A';
@@ -224,7 +224,7 @@ export default function OutpostUnifiedScreen() {
   }), [joinedGroups, nearbyGroupIds, trailmateIds, nearbyTrailmateIds, eventIds, loadedAt]);
 
   const featuredPosts = useMemo(() => selectFeaturedPosts(feed, 'for-you', rankingContext, 8), [feed, rankingContext]);
-  const displayedPosts = useMemo(() => selectSecondaryFeed(feed, featuredPosts, 'for-you', rankingContext, 4), [feed, featuredPosts, rankingContext]);
+  const displayedPosts = useMemo(() => feed.slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 6), [feed]);
   const locationLabel = [homeCity, homeState].filter(Boolean).join(', ') || 'Your area';
   const outpostBackground = useMemo(() => locationBackground(homeCity, homeState), [homeCity, homeState]);
   const campfireLabel = useMemo(() => campfireEyebrow(new Date(loadedAt).getHours()), [loadedAt]);
