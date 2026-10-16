@@ -199,8 +199,9 @@ export default function GoHome() {
   const [editing, setEditing] = useState(false);
   const [sections, setSections] = useState<HomeSection[]>(HOME_SECTIONS);
   const [now, setNow] = useState(() => Date.now());
-  const accent = mode === 'nature' ? GREEN : PURPLE;
-  const primary = mode === 'nature' ? '#12392C' : '#271A41';
+  const isNight = mode === 'night';
+  const accent = isNight ? '#E0B7EF' : '#274937';
+  const primary = isNight ? '#E6D8F2' : '#244B39';
   const cardWidth = Math.min(width * 0.66, 270);
 
   useEffect(() => {
@@ -524,36 +525,36 @@ export default function GoHome() {
     : actionTrip
       ? (isLive ? 'Happening now · ' : dateLabel(actionTrip.starts_at) + ' · ') + actionTrip.city + ', ' + actionTrip.state
       : mode === 'nature' ? 'Find a hike, a campsite, or a community adventure.' : 'Discover music, culture, food, and your city community.';
-  return <ScrollView ref={scrollRef} style={[styles.screen, mode === 'night' && styles.nightScreen]}
+  return <ScrollView ref={scrollRef} style={[styles.screen, isNight && styles.nightScreen]}
     contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={primary}/>}>
     <View style={styles.brandBar}>
-      <Text style={styles.eyebrow}>GO MELANATED · YOUR TRAILHEAD</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="Your profile" onPress={() => router.push('/member/profile')} style={styles.profileButton}>
-        <AppIcon name="profile" color={INK} size={21}/>
+      <Text style={[styles.eyebrow, isNight && styles.nightAccent]}>GO MELANATED · YOUR TRAILHEAD</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Your profile" onPress={() => router.push('/member/profile')} style={[styles.profileButton, isNight && styles.nightProfileButton]}>
+        <AppIcon name="profile" color={isNight ? '#F1E8F6' : INK} size={21}/>
       </Pressable>
     </View>
-    <View style={styles.switcher}>{(['nature', 'night'] as const).map(value =>
+    <View style={[styles.switcher, isNight && styles.nightSwitcher]}>{(['nature', 'night'] as const).map(value =>
       <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: mode === value }}
         onPress={() => switchMode(value)}
-        style={[styles.modeButton, mode === value && { backgroundColor: value === 'nature' ? '#D6F0CC' : '#EAD8F7' }]}>
-        <Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{value === 'nature' ? '🌿  Nature' : '🌆  Nights'}</Text>
+        style={[styles.modeButton, mode === value && { backgroundColor: value === 'nature' ? '#DDE7D8' : '#625675' }]}>
+        <Text style={[styles.modeText, isNight && styles.nightMutedText, mode === value && styles.modeTextActive, mode === value && isNight && styles.nightHeading]}>{value === 'nature' ? '🌿  Nature' : '🌆  Nights'}</Text>
       </Pressable>)}</View>
     {sceneInitialized ?
       <GoTrailheadScene displayName={memberName} greeting={greetingFor(new Date(now).getHours())}
         rank={effectiveRank} badges={memberBadges} weather={localWeather}
         homeCity={profile.city} homeState={profile.state}
         nightImage={nightPhoto} mode={mode}/> :
-      <View style={[styles.scenePlaceholder, { backgroundColor: primary }]}>
+      <View style={[styles.scenePlaceholder, { backgroundColor: isNight ? '#30304B' : '#5F7968' }]}>
         <ActivityIndicator color={accent}/>
         <Text style={styles.sceneLoadingText}>Preparing your Trailhead...</Text>
       </View>}
-    <Pressable accessibilityRole="button" style={styles.nextAdventure}
+    <Pressable accessibilityRole="button" style={[styles.nextAdventure, isNight && styles.nightPanel]}
       onPress={() => actionOuting ? router.push({ pathname: '/local-events/[id]', params: { id: actionOuting.id } }) : actionTrip ? router.push({ pathname: '/adventures/[id]', params: { id: actionTrip.id } }) : goDiscover(mode)}>
-      <View style={styles.nextIcon}><AppIcon name={isLive ? 'map' : hasBooking ? 'calendar' : 'explore'} color={primary} size={21}/></View>
+      <View style={[styles.nextIcon, isNight && styles.nightIconSurface]}><AppIcon name={isLive ? 'map' : hasBooking ? 'calendar' : 'explore'} color={primary} size={21}/></View>
       <View style={styles.flex}>
-        <Text style={styles.nextEyebrow}>{isLive ? 'HAPPENING NOW' : actionOuting ? 'CITY OUTING · GOING' : hasBooking ? isPending ? 'YOUR RESERVATION' : 'NEXT UP' : mode === 'nature' ? 'OUTDOOR PLANS' : 'CITY PLANS'}</Text>
-        <Text style={styles.nextTitle} numberOfLines={1}>{hasBooking ? heroHeading : mode === 'nature' ? 'Find your next outdoor adventure' : 'See what is happening in your city'}</Text>
-        <Text style={styles.nextMeta} numberOfLines={1}>{heroDescription}</Text>
+        <Text style={[styles.nextEyebrow, isNight && styles.nightAccent]}>{isLive ? 'HAPPENING NOW' : actionOuting ? 'CITY OUTING · GOING' : hasBooking ? isPending ? 'YOUR RESERVATION' : 'NEXT UP' : mode === 'nature' ? 'OUTDOOR PLANS' : 'CITY PLANS'}</Text>
+        <Text style={[styles.nextTitle, isNight && styles.nightHeading]} numberOfLines={1}>{hasBooking ? heroHeading : mode === 'nature' ? 'Find your next outdoor adventure' : 'See what is happening in your city'}</Text>
+        <Text style={[styles.nextMeta, isNight && styles.nightMutedText]} numberOfLines={1}>{heroDescription}</Text>
       </View>
       <AppIcon name="chevron-forward" size={21} color={primary}/>
     </Pressable>
@@ -570,15 +571,15 @@ export default function GoHome() {
       </View>}
     {loading && <ActivityIndicator color={primary} style={styles.loading}/>}
     {error && <Text style={styles.error}>{error}</Text>}
-    <View style={styles.personalizeRow}><Text style={styles.homeLabel}>YOUR WORLD</Text>
+    <View style={styles.personalizeRow}><Text style={[styles.homeLabel, isNight && styles.nightAccent]}>YOUR WORLD</Text>
       <Pressable accessibilityRole="button" accessibilityLabel={editing ? 'Done editing home' : 'Customize home'}
         onPress={() => setEditing(current => !current)} style={styles.editButton}>
         <AppIcon name={editing ? 'check' : 'settings'} color={primary} size={15}/>
-        <Text style={styles.editText}>{editing ? 'Done' : 'Customize'}</Text>
+        <Text style={[styles.editText, isNight && styles.nightAccent]}>{editing ? 'Done' : 'Customize'}</Text>
       </Pressable>
     </View>
     <View style={styles.worldActions}>
-      <Pressable accessibilityRole="button" style={[styles.worldAction, mode === 'night' && styles.nightAction]}
+      <Pressable accessibilityRole="button" style={[styles.worldAction, isNight && styles.nightAction]}
         onPress={() => mode === 'nature' ? router.push('/trail-guide') : goDiscover('night')}>
         <AppIcon name={mode === 'nature' ? 'guide' : 'explore'} color={primary} size={19}/>
         <Text style={[styles.worldActionText, { color: primary }]}>{mode === 'nature' ? 'Trail Guide' : 'Explore Night'}</Text>
@@ -591,12 +592,12 @@ export default function GoHome() {
     </View>
     <View style={styles.quickTiles}>
       <Pressable accessibilityRole="button" accessibilityLabel="Your Circle. Open your communities"
-        style={[styles.quickTile, styles.quickCircle]} onPress={() => router.push('/communities')}>
+        style={[styles.quickTile, styles.quickCircle, isNight && styles.nightQuickCircle]} onPress={() => router.push('/communities')}>
         {circlePhoto ? <Image source={{ uri: circlePhoto }} resizeMode="cover" style={styles.quickTilePhoto}/> : <ContourLines light/>}
-        {circlePhoto && <PhotoShade id="goHomeCircle" gentle/>}
+        {circlePhoto && <PhotoShade id="goHomeCircle" night={isNight} gentle/>}
         <View style={styles.quickTileInner}>
           <View style={styles.quickTop}>
-            <AppIcon name="community" color="#BEF4A4" size={23}/>
+            <AppIcon name="community" color={isNight ? '#E0B7EF' : '#BEF4A4'} size={23}/>
             <Text style={styles.quickOverline}>{mode === 'nature' ? 'OUTDOOR CREW' : 'CITY CIRCLE'}</Text>
           </View>
           <View>
@@ -616,39 +617,39 @@ export default function GoHome() {
         </View>
       </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel={mode === 'nature' ? 'Your Trail. Open your adventure memories' : 'Your city plans'}
-        style={[styles.quickTile, styles.quickTrail]} onPress={() => mode === 'nature' ? router.push('/member/journey')
+        style={[styles.quickTile, styles.quickTrail, isNight && styles.nightQuickTrail]} onPress={() => mode === 'nature' ? router.push('/member/journey')
           : nextRsvp ? router.push({ pathname: '/local-events/[id]', params: { id: nextRsvp.id } })
           : modeTrips.some(trip => activeBooking(trip, now)) ? router.push('/member/trips') : goDiscover('night')}>
-        {quickStoryPhoto ? <Image source={{ uri: quickStoryPhoto }} resizeMode="cover" style={styles.quickTilePhoto}/> : <ContourLines/>}
-        {quickStoryPhoto && <PhotoShade id="goHomeTrail" gentle/>}
+        {quickStoryPhoto ? <Image source={{ uri: quickStoryPhoto }} resizeMode="cover" style={styles.quickTilePhoto}/> : <ContourLines light={isNight}/>} 
+        {quickStoryPhoto && <PhotoShade id="goHomeTrail" night={isNight} gentle/>}
         <View style={styles.quickTileInner}>
           <View style={styles.quickTop}>
-            <AppIcon name={mode === 'nature' ? 'stamp' : 'calendar'} color={quickStoryPhoto ? '#F3DFAD' : '#4E6F50'} size={23}/>
-            <Text style={[styles.quickOverline, !quickStoryPhoto && styles.quickTrailOverline]}>{mode === 'nature' ? 'YOUR STORY' : 'YOUR CITY LIFE'}</Text>
+            <AppIcon name={mode === 'nature' ? 'stamp' : 'calendar'} color={quickStoryPhoto || isNight ? '#EBD6F5' : '#4E6F50'} size={23}/>
+            <Text style={[styles.quickOverline, !quickStoryPhoto && !isNight && styles.quickTrailOverline]}>{mode === 'nature' ? 'YOUR STORY' : 'YOUR CITY LIFE'}</Text>
           </View>
           <View>
-            <Text style={[styles.quickTileTitle, !quickStoryPhoto && styles.quickTrailTitle]}>{mode === 'nature' ? 'Your Trail' : 'City Plans'}</Text>
-            <Text style={[styles.quickTileCopy, !quickStoryPhoto && styles.quickTrailCopy]}>
+            <Text style={[styles.quickTileTitle, !quickStoryPhoto && !isNight && styles.quickTrailTitle]}>{mode === 'nature' ? 'Your Trail' : 'City Plans'}</Text>
+            <Text style={[styles.quickTileCopy, !quickStoryPhoto && !isNight && styles.quickTrailCopy]}>
               {mode === 'night' ? upcomingRsvps.length + modeTrips.filter(trip => activeBooking(trip, now)).length + ' upcoming plans' : session && journey.length ? journey.length + (journey.length === 1 ? ' adventure remembered' : ' adventures remembered') : 'Your first chapter awaits'}
             </Text>
           </View>
           <View style={styles.quickBottom}>
-            <Text style={[styles.quickMilestone, !quickStoryPhoto && styles.quickTrailMilestone]}>
+            <Text style={[styles.quickMilestone, !quickStoryPhoto && !isNight && styles.quickTrailMilestone]}>
               {mode === 'night' ? (nextRsvp ? dateLabel(nextRsvp.starts_at) + ' · ' + nextRsvp.city : 'Find your next city experience') : nextMilestone && journey.length ? nextMilestone - journey.length + ' to your next milestone' : 'Your outdoor life, remembered'}
             </Text>
-            <AppIcon name="chevron-forward" color={quickStoryPhoto ? '#FFF4E0' : '#405C45'} size={16}/>
+            <AppIcon name="chevron-forward" color={quickStoryPhoto || isNight ? '#EBD6F5' : '#405C45'} size={16}/>
           </View>
         </View>
       </Pressable>
     </View>
-    {editing && <View style={styles.editor}>
-      <Text style={styles.editorTitle}>Make this space yours</Text>
-      <Text style={styles.editorHint}>Show, hide, or move sections. Your choice is saved on this device for this mode.</Text>
-      {HOME_SECTIONS.map(value => <View key={value} style={styles.editorRow}>
+    {editing && <View style={[styles.editor, isNight && styles.nightPanel]}>
+      <Text style={[styles.editorTitle, isNight && styles.nightHeading]}>Make this space yours</Text>
+      <Text style={[styles.editorHint, isNight && styles.nightMutedText]}>Show, hide, or move sections. Your choice is saved on this device for this mode.</Text>
+      {HOME_SECTIONS.map(value => <View key={value} style={[styles.editorRow, isNight && styles.nightRow]}>
         <Pressable accessibilityRole="button" accessibilityState={{ checked: sections.includes(value) }}
           style={styles.editorCheck} onPress={() => toggleSection(value)}>
           <AppIcon name={sections.includes(value) ? 'check' : 'add'} color={primary} size={21}/>
-          <Text style={styles.editorName}>{value === 'circle' ? 'Your circle' : value === 'trail' ? 'Your story' : 'Inspiration'}</Text>
+          <Text style={[styles.editorName, isNight && styles.nightHeading]}>{value === 'circle' ? 'Your circle' : value === 'trail' ? 'Your story' : 'Inspiration'}</Text>
         </Pressable>
         {sections.includes(value) && <View style={styles.editorArrows}>
           <Pressable accessibilityRole="button" accessibilityLabel={'Move ' + value + ' up'} disabled={sections.indexOf(value) === 0} onPress={() => moveSection(value, -1)} style={styles.arrowTap}><AppIcon name="arrow-up" color={sections.indexOf(value) === 0 ? '#9BA6A0' : primary} size={20}/></Pressable>
@@ -656,16 +657,16 @@ export default function GoHome() {
         </View>}
       </View>)}
       <Pressable accessibilityRole="button" onPress={() => setHomeSections(HOME_SECTIONS)}>
-        <Text style={styles.reset}>Reset home layout</Text>
+        <Text style={[styles.reset, isNight && styles.nightAccent]}>Reset home layout</Text>
       </Pressable>
     </View>}
     {sections.map(sectionContent)}
-    <Pressable style={styles.crossCard} accessibilityRole="button" onPress={() => switchMode(mode === 'nature' ? 'night' : 'nature')}>
+    <Pressable style={[styles.crossCard, isNight && styles.nightPanel]} accessibilityRole="button" onPress={() => switchMode(mode === 'nature' ? 'night' : 'nature')}>
       <View style={styles.flex}>
-        <Text style={styles.crossKicker}>THERE&apos;S MORE TO YOUR WORLD</Text>
-        <Text style={styles.crossTitle}>{mode === 'nature' ? 'A little city adventure?' : 'Take the scenic route.'}</Text>
-        <Text style={styles.muted}>{mode === 'nature' ? 'Discover brunches, markets, arts, food, and city experiences all day.' : 'See what is waiting beyond the pavement.'}</Text>
-        <Text style={styles.crossAction}>Switch to {mode === 'nature' ? 'Nights' : 'Nature'}  →</Text>
+        <Text style={[styles.crossKicker, isNight && styles.nightAccent]}>THERE&apos;S MORE TO YOUR WORLD</Text>
+        <Text style={[styles.crossTitle, isNight && styles.nightHeading]}>{mode === 'nature' ? 'A little city adventure?' : 'Take the scenic route.'}</Text>
+        <Text style={[styles.muted, isNight && styles.nightMutedText]}>{mode === 'nature' ? 'Discover brunches, markets, arts, food, and city experiences all day.' : 'See what is waiting beyond the pavement.'}</Text>
+        <Text style={[styles.crossAction, isNight && styles.nightAccent]}>Switch to {mode === 'nature' ? 'Nights' : 'Nature'}  →</Text>
       </View>
     </Pressable>
     <View style={styles.bottomSpace}/>
@@ -673,14 +674,24 @@ export default function GoHome() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F7F8F4' },
-  nightScreen: { backgroundColor: '#F6F3F9' },
+  screen: { flex: 1, backgroundColor: '#94A993' },
+  nightScreen: { backgroundColor: '#25273D' },
+  nightPanel: { backgroundColor: '#35364F', borderColor: '#56516B' },
+  nightHeading: { color: '#F4EFF8' },
+  nightMutedText: { color: '#C9C3D5' },
+  nightAccent: { color: '#D7B8E9' },
+  nightIconSurface: { backgroundColor: '#4B4968' },
+  nightProfileButton: { backgroundColor: '#41435D' },
+  nightSwitcher: { backgroundColor: '#39394F' },
+  nightQuickCircle: { backgroundColor: '#35314D' },
+  nightQuickTrail: { backgroundColor: '#38364F' },
+  nightRow: { borderTopColor: '#5E5B72' },
   content: { paddingHorizontal: 16, paddingTop: 11, paddingBottom: 32, width: '100%', maxWidth: 970, alignSelf: 'center' },
   flex: { flex: 1 },
   scenePlaceholder: { minHeight: 302, borderRadius: 21, alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 7 },
   sceneLoadingText: { color: '#E3EDE1', fontWeight: '800', fontSize: 12 },
   brandBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9, minHeight: 40 },
-  nextAdventure: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E9E2', borderRadius: 17, marginTop: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  nextAdventure: { backgroundColor: '#E7EDE2', borderWidth: 1, borderColor: '#E2E9E2', borderRadius: 17, marginTop: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 11 },
   nextIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: '#E6F1E2', alignItems: 'center', justifyContent: 'center' },
   nextEyebrow: { fontSize: 9, color: '#68836E', letterSpacing: 1, fontWeight: '900' },
   nextTitle: { fontSize: 14, fontWeight: '900', color: INK, marginTop: 2 },
@@ -688,10 +699,10 @@ const styles = StyleSheet.create({
   eyebrow: { fontWeight: '900', fontSize: 10, color: '#427B59', letterSpacing: 1.4 },
   greeting: { color: INK, fontWeight: '900', fontSize: 22, marginTop: 3, letterSpacing: -0.5 },
   greetingSub: { color: MUTED, fontSize: 11, marginTop: 4 },
-  profileButton: { backgroundColor: '#E9EDE8', borderRadius: 24, padding: 11 },
-  switcher: { flexDirection: 'row', padding: 3, gap: 4, borderRadius: 17, backgroundColor: '#E6E7E4', marginBottom: 11 },
+  profileButton: { backgroundColor: '#D6E1D3', borderRadius: 24, padding: 11 },
+  switcher: { flexDirection: 'row', padding: 3, gap: 4, borderRadius: 17, backgroundColor: '#728B78', marginBottom: 11 },
   modeButton: { flex: 1, paddingVertical: 7, borderRadius: 14, alignItems: 'center', minHeight: 41, justifyContent: 'center' },
-  modeText: { color: '#6B7371', fontSize: 14, fontWeight: '700' }, modeTextActive: { color: INK, fontWeight: '900' },
+  modeText: { color: '#E5EEE4', fontSize: 14, fontWeight: '700' }, modeTextActive: { color: INK, fontWeight: '900' },
   hero: { borderRadius: 21, overflow: 'hidden', marginBottom: 0 },
   heroImage: { minHeight: 199, justifyContent: 'flex-end' }, heroCorners: { borderRadius: 21 },
   heroShade: { paddingHorizontal: 18, paddingVertical: 16, paddingTop: 27, minHeight: 199, justifyContent: 'flex-end' },
@@ -714,8 +725,8 @@ const styles = StyleSheet.create({
   nightWelcomeCopy: { color: '#E6D9F0', fontSize: 12, marginTop: 5, lineHeight: 18 },
   nightWelcomeLink: { color: '#D7A9F7', fontSize: 12, fontWeight: '900', marginTop: 9 },
   worldActions: { flexDirection: 'row', gap: 9, marginTop: 10 },
-  worldAction: { flex: 1, minHeight: 43, backgroundColor: '#E6F1E5', borderRadius: 13, paddingHorizontal: 12, flexDirection: 'row', gap: 7, alignItems: 'center' },
-  nightAction: { backgroundColor: '#EBDEF6' },
+  worldAction: { flex: 1, minHeight: 43, backgroundColor: '#DBE4D7', borderRadius: 13, paddingHorizontal: 12, flexDirection: 'row', gap: 7, alignItems: 'center' },
+  nightAction: { backgroundColor: '#494561' },
   worldActionText: { fontSize: 12, fontWeight: '900' },
   cityPlanCard: { minHeight: 82, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
   cityPlanImage: { width: 74, height: 62, borderRadius: 11 },
@@ -730,7 +741,7 @@ const styles = StyleSheet.create({
   quickTiles: { flexDirection: 'row', gap: 10, marginTop: 3, alignItems: 'stretch' },
   quickTile: { flex: 1, minWidth: 0, minHeight: 164, borderRadius: 18, overflow: 'hidden', justifyContent: 'flex-end' },
   quickCircle: { backgroundColor: '#163F2B' },
-  quickTrail: { backgroundColor: '#EEE8D6' },
+  quickTrail: { backgroundColor: '#DEE5D8' },
   quickTilePhoto: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
   quickTileInner: { flex: 1, justifyContent: 'space-between', padding: 14, zIndex: 1, minHeight: 164 },
   quickTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -748,7 +759,7 @@ const styles = StyleSheet.create({
   quickTrailCopy: { color: '#4F6655' },
   quickMilestone: { fontSize: 9, fontWeight: '800', color: '#FFF0CD', flex: 1 },
   quickTrailMilestone: { color: '#4B684D' },
-  editor: { backgroundColor: '#FFF', borderColor: '#DBE2DB', borderWidth: 1, padding: 16, borderRadius: 18, marginTop: 7, gap: 9 },
+  editor: { backgroundColor: '#E8EEE3', borderColor: '#DBE2DB', borderWidth: 1, padding: 16, borderRadius: 18, marginTop: 7, gap: 9 },
   editorTitle: { fontSize: 16, fontWeight: '900', color: INK },
   editorHint: { color: MUTED, fontSize: 12, lineHeight: 18 },
   editorRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#E7EDE7', paddingTop: 10 },
@@ -812,7 +823,7 @@ const styles = StyleSheet.create({
   editorialShade: { backgroundColor: 'rgba(14,27,24,0.68)', padding: 18, paddingTop: 28 },
   editorialTitle: { color: '#FFF', fontSize: 20, fontWeight: '900', maxWidth: 330, marginTop: 6 },
   editorialAction: { color: '#FFF', fontSize: 12, fontWeight: '900', marginTop: 11 },
-  crossCard: { backgroundColor: '#FFF', borderRadius: 21, padding: 21, marginTop: 24, borderWidth: 1, borderColor: '#E0E6DF' },
+  crossCard: { backgroundColor: '#E7EDE2', borderRadius: 21, padding: 21, marginTop: 24, borderWidth: 1, borderColor: '#E0E6DF' },
   crossKicker: { color: '#547A63', letterSpacing: 1.5, fontWeight: '900', fontSize: 10 },
   crossTitle: { color: INK, fontSize: 18, fontWeight: '900', marginTop: 7 },
   crossAction: { color: '#37654C', fontWeight: '900', fontSize: 12, marginTop: 13 },
