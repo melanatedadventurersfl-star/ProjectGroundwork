@@ -33,10 +33,13 @@ function openItem(item: DiscoveryItem) {
 function dateLabel(value: string) {
   return new Date(value).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
-function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+function Chip({ label, active, onPress, palette }: {
+  label: string; active: boolean; onPress: () => void;
+  palette: { chip: string; elevated: string; border: string; accent: string; text: string };
+}) {
   return <Pressable accessibilityRole="button" accessibilityState={{ selected: active }}
-    onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
-    <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+    onPress={onPress} style={[styles.chip, { backgroundColor: active ? palette.elevated : palette.chip, borderColor: active ? palette.accent : palette.border }]}>
+    <Text style={[styles.chipText, { color: palette.text }]}>{label}</Text>
   </Pressable>;
 }
 
@@ -126,24 +129,24 @@ export default function GoDiscover() {
         <Text style={[styles.moreText, { color: moreFilters ? palette.background : palette.text }]}>Filters</Text>
       </Pressable>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.compactFilters}>
-        <Chip label={dateButtons.find(x => x.key === filters.when)?.label || 'Anytime'}
+        <Chip palette={palette} label={dateButtons.find(x => x.key === filters.when)?.label || 'Anytime'}
           active={filters.when !== 'any'} onPress={() => setMoreFilters(true)}/>
-        <Chip label={filters.radius == null ? 'Any distance' : `${filters.radius} mi`}
+        <Chip palette={palette} label={filters.radius == null ? 'Any distance' : `${filters.radius} mi`}
           active={filters.radius != null} onPress={() => setMoreFilters(true)}/>
-        <Chip label="Free" active={filters.freeOnly} onPress={() => setFilter('freeOnly', !filters.freeOnly)}/>
-        <Chip label="Saved" active={filters.savedOnly} onPress={() => setFilter('savedOnly', !filters.savedOnly)}/>
+        <Chip palette={palette} label="Free" active={filters.freeOnly} onPress={() => setFilter('freeOnly', !filters.freeOnly)}/>
+        <Chip palette={palette} label="Saved" active={filters.savedOnly} onPress={() => setFilter('savedOnly', !filters.savedOnly)}/>
       </ScrollView>
     </View>
     {moreFilters && <View style={[styles.filtersBox, { backgroundColor: palette.surface, borderColor: palette.border }]}>
       <Text style={[styles.filterTitle, { color: palette.text }]}>When</Text>
       <View style={styles.chipsWrap}>
-        {dateButtons.map(x => <Chip key={x.key} label={x.label} active={filters.when === x.key}
+        {dateButtons.map(x => <Chip palette={palette} key={x.key} label={x.label} active={filters.when === x.key}
           onPress={() => setFilter('when', x.key)}/>)}
       </View>
       <Text style={[styles.filterTitle, { color: palette.text }]}>Distance from {homeLocation ? `${homeLocation.city}, ${homeLocation.state}` : 'your home location'}</Text>
       {!center && <Text style={[styles.helper, { color: palette.muted }]}>Add a supported home city and state in your profile to filter by distance.</Text>}
       <View style={styles.chipsWrap}>
-        {distanceButtons.map(x => <Chip key={String(x.key)} label={x.label}
+        {distanceButtons.map(x => <Chip palette={palette} key={String(x.key)} label={x.label}
           active={filters.radius === x.key} onPress={() => setFilter('radius', center ? x.key : null)}/>)}
       </View>
       <Pressable onPress={() => { setFilters({ ...DEFAULT_FILTERS, mode: filters.mode }); setMoreFilters(false); }}>
