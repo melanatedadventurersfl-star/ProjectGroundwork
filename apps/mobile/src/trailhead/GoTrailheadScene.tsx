@@ -80,12 +80,12 @@ function TrailheadAtmosphere({ weather, phase, mode }: { weather: WeatherTheme; 
       opacity: reduceMotion ? 0.055 : light.interpolate({ inputRange: [0, 1], outputRange: [0.025, 0.10] }),
     }]} />
     {afterDark && STARS.map((left, index) => <Animated.View key={'star-' + index}
-      style={[styles.star, { left: left + '%', top: 8 + (index % 3) * 11,
+      style={[styles.star, { left: `${left}%` as `${number}%`, top: 8 + (index % 3) * 11,
         opacity: reduceMotion ? 0.35 : light.interpolate({ inputRange: [0, 1], outputRange: [0.16, 0.50] }),
       }]} />)}
     {rainy && RAIN.map(index => <Animated.View key={'rain-' + index}
       style={[styles.raindrop, {
-        left: ((index * 17.7) % 96) + '%',
+        left: `${(index * 17.7) % 96}%` as `${number}%`,
         top: ((index * 31) % 145) - 34,
         height: 11 + index % 12,
         opacity: storm ? 0.39 : 0.25,
