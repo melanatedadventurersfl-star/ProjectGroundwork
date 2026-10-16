@@ -22,12 +22,15 @@ import { listLocalEvents, setLocalEventRsvp, type LocalEvent } from '../local-ev
 import { getMemberBasecamp } from '../member/api';
 import { TRAIL_GUIDE_CITIES, TRAIL_GUIDE_DEFAULT_BACKGROUND } from '../trailGuide/locationBackgrounds';
 import { getCommunityFeed, getGroups, type CommunityGroup, type CommunityPost } from './api';
+import { useAuth } from '../auth/AuthProvider';
+import { useGoTheme } from '../theme/useGoTheme';
 import { getConnections, type Connection } from './circles';
 import { isPeopleCommunity, communityOwnershipLabel } from './communityModel';
 import { FeaturedCampfireCarousel } from './FeaturedCampfireCarousel';
 import { PostEngagementBar } from './PostEngagementBar';
 import { selectFeaturedPosts, selectSecondaryFeed } from './featuredPosts';
 
+type ThemePalette = { background: string; surface: string; elevated: string; border: string; text: string; muted: string; accent: string };
 const GOLD = '#D7B45A';
 const BG = '#0F1713';
 const SURFACE = '#16201B';
@@ -80,35 +83,35 @@ function formatDate(value: string) {
   return new Date(value).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function ConversationCard({ post, group, now }: { post: CommunityPost; group?: CommunityGroup; now: number }) {
+function ConversationCard({ post, group, now, palette }: { post: CommunityPost; group?: CommunityGroup; now: number; palette: ThemePalette }) {
   const media = post.image_url || (post.media_type === 'image' ? post.media_url : null);
   return (
-    <Pressable style={({ pressed }) => [styles.conversationCard, pressed && styles.pressed]} onPress={() => router.push(`/community/${post.id}`)}>
+    <Pressable style={({ pressed }) => [styles.conversationCard, { backgroundColor: palette.surface }, pressed && styles.pressed]} onPress={() => router.push(`/community/${post.id}`)}>
       <View style={styles.contextLine}>
-        <Text style={styles.contextText} numberOfLines={1}>{group?.name?.toUpperCase() || 'OUTPOST'}</Text>
-        <Text style={styles.contextTime}>{relativeTime(post.created_at, now)}</Text>
+        <Text style={[styles.contextText, { color: palette.accent }]} numberOfLines={1}>{group?.name?.toUpperCase() || 'OUTPOST'}</Text>
+        <Text style={[styles.contextTime, { color: palette.muted }]}>{relativeTime(post.created_at, now)}</Text>
       </View>
       <Pressable style={styles.authorRow} onPress={(event) => { event.stopPropagation(); router.push({ pathname: '/community-profile/[id]', params: { id: post.author_id } }); }}>
         <View style={styles.avatar}>{post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{initials(post.author_name)}</Text>}</View>
-        <Text style={styles.authorName}>{post.author_name}</Text>
+        <Text style={[styles.authorName, { color: palette.text }]}>{post.author_name}</Text>
       </Pressable>
-      {post.body ? <Text style={styles.conversationText} numberOfLines={4}>{post.body}</Text> : null}
+      {post.body ? <Text style={[styles.conversationText, { color: palette.text }]}> numberOfLines={4}>{post.body}</Text> : null}
       {media ? <Image source={{ uri: media }} style={styles.conversationImage} resizeMode="cover" /> : null}
       <View style={styles.engagement}><PostEngagementBar postId={post.id} initialReactionCount={post.reaction_count || 0} commentCount={post.comment_count || 0} /></View>
     </Pressable>
   );
 }
 
-function CommunityRow({ group, latest, now }: { group: CommunityGroup; latest?: CommunityPost; now: number }) {
+function CommunityRow({ group, latest, now, palette }: { group: CommunityGroup; latest?: CommunityPost; now: number; palette: ThemePalette }) {
   const cover = group.cover_image_url || group.image_url;
   const status = latest ? `${latest.author_name} posted · ${relativeTime(latest.created_at, now)}` : `${group.member_count} member${group.member_count === 1 ? '' : 's'}`;
   return (
-    <Pressable style={({ pressed }) => [styles.communityRow, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/groups/[id]', params: { id: group.id } })}>
+    <Pressable style={({ pressed }) => [styles.communityRow, { backgroundColor: palette.surface }, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/groups/[id]', params: { id: group.id } })}>
       <View style={styles.communityImageWrap}>{cover ? <Image source={{ uri: cover }} style={styles.communityImage} /> : <Text style={styles.communityInitials}>{initials(group.name)}</Text>}</View>
       <View style={styles.flex}>
-        <Text style={styles.communityName} numberOfLines={1}>{group.name}</Text>
-        <Text style={styles.communityOwner} numberOfLines={1}>{communityOwnershipLabel(group)}</Text>
-        <Text style={[styles.communityActivity, Boolean(latest) && styles.communityActivityLive]} numberOfLines={1}>{status}</Text>
+        <Text style={[styles.communityName, { color: palette.text }]}> numberOfLines={1}>{group.name}</Text>
+        <Text style={[styles.communityOwner, { color: palette.muted }]}> numberOfLines={1}>{communityOwnershipLabel(group)}</Text>
+        <Text style={[styles.communityActivity, Boolean(latest) && styles.communityActivityLive, { color: palette.muted }]} numberOfLines={1}>{status}</Text>
       </View>
       <Ionicons name="chevron-forward" size={18} color={GOLD} />
     </Pressable>
@@ -119,18 +122,18 @@ type UpcomingItem =
   | { kind: 'adventure'; value: AdventureSummary }
   | { kind: 'local'; value: LocalEvent };
 
-function UpcomingCard({ item, onInterested }: { item: UpcomingItem; onInterested: (event: LocalEvent) => void }) {
+function UpcomingCard({ item, onInterested, palette }: { item: UpcomingItem; onInterested: (event: LocalEvent) => void; palette: ThemePalette }) {
   if (item.kind === 'adventure') {
     const event = item.value;
     return (
-      <Pressable style={({ pressed }) => [styles.upcomingCard, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: event.id } })}>
+      <Pressable style={({ pressed }) => [styles.upcomingCard, { backgroundColor: palette.surface }, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: event.id } })}>
         {event.hero_image_url ? <Image source={{ uri: event.hero_image_url }} style={styles.upcomingImage} /> : <View style={[styles.upcomingImage, styles.eventFallback]}><Ionicons name="trail-sign-outline" size={30} color={GOLD} /></View>}
         <View style={styles.upcomingBody}>
-          <Text style={styles.upcomingEyebrow}>HOST OUTING</Text>
-          <Text style={styles.upcomingTitle} numberOfLines={2}>{event.title}</Text>
-          <Text style={styles.upcomingMeta}>{formatDate(event.starts_at)}</Text>
-          <Text style={styles.upcomingMeta} numberOfLines={1}>{[event.venue_name || event.city, event.state].filter(Boolean).join(', ')}</Text>
-          <View style={styles.tagRow}><View style={styles.tag}><Text style={styles.tagText}>{event.category}</Text></View></View>
+          <Text style={[styles.upcomingEyebrow, { color: palette.accent }]}>HOST OUTING</Text>
+          <Text style={[styles.upcomingTitle, { color: palette.text }]} numberOfLines={2}>{event.title}</Text>
+          <Text style={[styles.upcomingMeta, { color: palette.muted }]}>{formatDate(event.starts_at)}</Text>
+          <Text style={[styles.upcomingMeta, { color: palette.muted }]} numberOfLines={1}>{[event.venue_name || event.city, event.state].filter(Boolean).join(', ')}</Text>
+          <View style={styles.tagRow}><View style={[styles.tag, { backgroundColor: palette.elevated }]}><Text style={[styles.tagText, { color: palette.text }]}>{event.category}</Text></View></View>
         </View>
       </Pressable>
     );
@@ -138,13 +141,13 @@ function UpcomingCard({ item, onInterested }: { item: UpcomingItem; onInterested
 
   const event = item.value;
   return (
-    <Pressable style={({ pressed }) => [styles.upcomingCard, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}>
+    <Pressable style={({ pressed }) => [styles.upcomingCard, { backgroundColor: palette.surface }, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}>
       {event.image_url ? <Image source={{ uri: event.image_url }} style={styles.upcomingImage} /> : <View style={[styles.upcomingImage, styles.eventFallback]}><Ionicons name="calendar-outline" size={30} color={GOLD} /></View>}
       <View style={styles.upcomingBody}>
-        <Text style={styles.upcomingEyebrow}>OUTING</Text>
-        <Text style={styles.upcomingTitle} numberOfLines={2}>{event.title}</Text>
-        <Text style={styles.upcomingMeta}>{formatDate(event.starts_at)}</Text>
-        <Text style={styles.upcomingMeta} numberOfLines={1}>{[event.venue_name || event.city, event.state].filter(Boolean).join(', ')}</Text>
+        <Text style={[styles.upcomingEyebrow, { color: palette.accent }]}>OUTING</Text>
+        <Text style={[styles.upcomingTitle, { color: palette.text }]} numberOfLines={2}>{event.title}</Text>
+        <Text style={[styles.upcomingMeta, { color: palette.muted }]}>{formatDate(event.starts_at)}</Text>
+        <Text style={[styles.upcomingMeta, { color: palette.muted }]} numberOfLines={1}>{[event.venue_name || event.city, event.state].filter(Boolean).join(', ')}</Text>
         {!event.my_rsvp || event.my_rsvp === 'cancelled' ? <Pressable style={styles.interestedButton} onPress={(tap) => { tap.stopPropagation(); onInterested(event); }}><Text style={styles.interestedText}>Interested</Text></Pressable> : <Text style={styles.rsvpText}>{event.my_rsvp === 'going' ? 'You’re going' : 'Interested'}</Text>}
       </View>
     </Pressable>
@@ -152,6 +155,8 @@ function UpcomingCard({ item, onInterested }: { item: UpcomingItem; onInterested
 }
 
 export default function OutpostUnifiedScreen() {
+  const { session } = useAuth();
+  const { palette } = useGoTheme(session?.user.id);
   const { width: windowWidth } = useWindowDimensions();
   const [featuredIndex, setFeaturedIndex] = useState(0);
   const [feed, setFeed] = useState<CommunityPost[]>([]);
@@ -247,14 +252,14 @@ export default function OutpostUnifiedScreen() {
   }, []);
 
   if (loading && !feed.length && !groups.length && !localEvents.length && !adventures.length) {
-    return <SafeAreaView style={styles.loading}><ActivityIndicator color={GOLD} /><Text style={styles.loadingText}>Gathering the Outpost…</Text></SafeAreaView>;
+    return <SafeAreaView style={[styles.loading, { backgroundColor: palette.background }]}><ActivityIndicator color={GOLD} /><Text style={[styles.loadingText, { color: palette.muted }]}>Gathering the Outpost…</Text></SafeAreaView>;
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: palette.background }]} edges={['top']}>
       <ScrollView
         scrollEnabled={pageScrollEnabled}
-        style={styles.screen}
+        style={[styles.screen, { backgroundColor: palette.background }]}
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={GOLD} />}
       >
@@ -270,8 +275,8 @@ export default function OutpostUnifiedScreen() {
         </ImageBackground>
 
         <View style={styles.sectionIntro}>
-          <Text style={styles.sectionEyebrow}>{campfireLabel}</Text>
-          <Text style={styles.sectionLead}>What your Outpost is sharing right now.</Text>
+          <Text style={[styles.sectionEyebrow, { color: palette.accent }]}>{campfireLabel}</Text>
+          <Text style={[styles.sectionLead, { color: palette.text }]}>What your Outpost is sharing right now.</Text>
         </View>
 
         <FeaturedCampfireCarousel
@@ -286,20 +291,20 @@ export default function OutpostUnifiedScreen() {
           onVerticalGestureActive={(active) => setPageScrollEnabled(!active)}
         />
 
-        <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Happening now</Text><Text style={styles.sectionSubtitle}>Conversation worth stepping into.</Text></View>
-        {displayedPosts.length ? displayedPosts.map((post) => <ConversationCard key={post.id} post={post} group={post.group_id ? groupMap.get(post.group_id) : undefined} now={loadedAt} />) : <View style={styles.emptyState}><Ionicons name="bonfire-outline" size={24} color={GREEN} /><Text style={styles.emptyTitle}>The fire’s quiet for a minute.</Text><Text style={styles.emptyCopy}>New conversations will appear here.</Text></View>}
+        <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: palette.text }]}>Happening now</Text><Text style={[styles.sectionSubtitle, { color: palette.muted }]}>Conversation worth stepping into.</Text></View>
+        {displayedPosts.length ? displayedPosts.map((post) => <ConversationCard key={post.id} post={post} group={post.group_id ? groupMap.get(post.group_id) : undefined} now={loadedAt} palette={palette} />) : <View style={[styles.emptyState, { backgroundColor: palette.surface }]}><Ionicons name="bonfire-outline" size={24} color={GREEN} /><Text style={[styles.emptyTitle, { color: palette.text }]}>The fire’s quiet for a minute.</Text><Text style={[styles.emptyCopy, { color: palette.muted }]}>New conversations will appear here.</Text></View>}
 
         <View style={styles.sectionHeaderRow}>
-          <View style={styles.flex}><Text style={styles.sectionTitle}>Coming up</Text><Text style={styles.sectionSubtitle}>Outings from hosts and your local community.</Text></View>
-          <Pressable onPress={() => router.push('/(tabs)/explore' as never)}><Text style={styles.seeAll}>See all</Text></Pressable>
+          <View style={styles.flex}><Text style={[styles.sectionTitle, { color: palette.text }]}>Coming up</Text><Text style={[styles.sectionSubtitle, { color: palette.muted }]}>Outings from hosts and your local community.</Text></View>
+          <Pressable onPress={() => router.push('/(tabs)/explore' as never)}><Text style={[styles.seeAll, { color: palette.accent }]}>See all</Text></Pressable>
         </View>
-        {upcoming.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.upcomingRail}>{upcoming.map((item) => <UpcomingCard key={`${item.kind}:${item.value.id}`} item={item} onInterested={handleInterested} />)}</ScrollView> : <View style={styles.emptyState}><Ionicons name="calendar-outline" size={24} color={GREEN} /><Text style={styles.emptyTitle}>Nothing scheduled yet.</Text><Text style={styles.emptyCopy}>Published host events and local outings will show up here.</Text></View>}
+        {upcoming.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.upcomingRail}>{upcoming.map((item) => <UpcomingCard key={`${item.kind}:${item.value.id}`} item={item} onInterested={handleInterested} palette={palette} />)}</ScrollView> : <View style={[styles.emptyState, { backgroundColor: palette.surface }]}><Ionicons name="calendar-outline" size={24} color={GREEN} /><Text style={[styles.emptyTitle, { color: palette.text }]}>Nothing scheduled yet.</Text><Text style={[styles.emptyCopy, { color: palette.muted }]}>Published host events and local outings will show up here.</Text></View>}
 
         <View style={styles.sectionHeaderRow}>
-          <View style={styles.flex}><Text style={styles.sectionTitle}>Your Communities</Text><Text style={styles.sectionSubtitle}>Groups you belong to, ordered by activity.</Text></View>
-          <Pressable onPress={() => router.push('/communities' as never)}><Text style={styles.seeAll}>See all</Text></Pressable>
+          <View style={styles.flex}><Text style={[styles.sectionTitle, { color: palette.text }]}>Your Communities</Text><Text style={[styles.sectionSubtitle, { color: palette.muted }]}>Groups you belong to, ordered by activity.</Text></View>
+          <Pressable onPress={() => router.push('/communities' as never)}><Text style={[styles.seeAll, { color: palette.accent }]}>See all</Text></Pressable>
         </View>
-        {joinedGroups.length ? <View style={styles.communityList}>{joinedGroups.slice(0, 3).map((group) => <CommunityRow key={group.id} group={group} latest={latestByGroup.get(group.id)} now={loadedAt} />)}</View> : <View style={styles.emptyState}><Ionicons name="people-outline" size={24} color={GREEN} /><Text style={styles.emptyTitle}>Find a community that has people behind it.</Text><Text style={styles.emptyCopy}>Communities are groups run by hosts, members, or Go Melanated. Camping, hiking, and water stay as interests instead of separate rooms.</Text><Pressable style={styles.emptyButton} onPress={() => router.push('/communities' as never)}><Text style={styles.emptyButtonText}>Find Communities</Text></Pressable></View>}
+        {joinedGroups.length ? <View style={styles.communityList}>{joinedGroups.slice(0, 3).map((group) => <CommunityRow key={group.id} group={group} latest={latestByGroup.get(group.id)} now={loadedAt} palette={palette} />)}</View> : <View style={[styles.emptyState, { backgroundColor: palette.surface }]}><Ionicons name="people-outline" size={24} color={GREEN} /><Text style={[styles.emptyTitle, { color: palette.text }]}>Find a community that has people behind it.</Text><Text style={[styles.emptyCopy, { color: palette.muted }]}>Communities are groups run by hosts, members, or Go Melanated. Camping, hiking, and water stay as interests instead of separate rooms.</Text><Pressable style={styles.emptyButton} onPress={() => router.push('/communities' as never)}><Text style={styles.emptyButtonText}>Find Communities</Text></Pressable></View>}
       </ScrollView>
     </SafeAreaView>
   );
