@@ -136,16 +136,16 @@ export function GoTrailheadScene({ displayName, greeting, rank, badges, weather,
   useEffect(() => { setImageFailed(false); }, [nightImage, rank, mode, weatherTheme, phase]);
 
   return (
-    <View style={styles.wrapper}>
-      <View style={styles.cover}>
+    <View style={[styles.wrapper, mode === 'night' && styles.nightWrapper]}>
+      <View style={[styles.cover, mode === 'night' && styles.nightCover]}>
         <Image source={source} resizeMode="cover" style={styles.background} onError={() => setImageFailed(true)} accessibilityLabel="Rank and weather themed Trailhead landscape" />
         <TrailheadAtmosphere weather={weatherTheme} phase={phase} mode={mode} />
         <Svg pointerEvents="none" style={StyleSheet.absoluteFillObject} width="100%" height="100%">
           <Defs>
             <LinearGradient id="goTrailheadShade" x1="0%" y1="0%" x2="0%" y2="100%">
-              <Stop offset="0%" stopColor={mode === 'night' ? '#130B27' : '#071610'} stopOpacity="0.52" />
-              <Stop offset="43%" stopColor={mode === 'night' ? '#130B27' : '#071610'} stopOpacity="0.37" />
-              <Stop offset="100%" stopColor={mode === 'night' ? '#140C23' : '#0A2019'} stopOpacity="0.84" />
+              <Stop offset="0%" stopColor={mode === 'night' ? '#201C35' : '#385446'} stopOpacity="0.68" />
+              <Stop offset="43%" stopColor={mode === 'night' ? '#25213B' : '#263E32'} stopOpacity="0.56" />
+              <Stop offset="100%" stopColor={mode === 'night' ? '#12142B' : '#11261B'} stopOpacity="0.93" />
             </LinearGradient>
           </Defs>
           <Rect width="100%" height="100%" fill="url(#goTrailheadShade)" />
@@ -190,25 +190,25 @@ export function GoTrailheadScene({ displayName, greeting, rank, badges, weather,
           </View>
         </View>
       </View>
-      <View style={styles.badgesRibbon}>
+      <View style={[styles.badgesRibbon, mode === 'night' && styles.nightBadgesRibbon]}>
         <View style={styles.badgeIntro}>
           <View style={styles.badgeTitleLine}>
-            <AppIcon name="badge" color="#86643A" size={17} />
-            <Text style={styles.badgesTitle}>Your badges</Text>
+            <AppIcon name="badge" color={mode === 'night' ? '#D8BDE9' : '#52684A'} size={17} />
+            <Text style={[styles.badgesTitle, mode === 'night' && styles.nightBadgesTitle]}>Your badges</Text>
           </View>
-          <Text style={styles.badgesCount}>{badges.length ? badges.length + ' earned' : 'Your first badge awaits'}</Text>
+          <Text style={[styles.badgesCount, mode === 'night' && styles.nightBadgesCount]}>{badges.length ? badges.length + ' earned' : 'Your first badge awaits'}</Text>
         </View>
         <View style={styles.badgeThumbs}>
           {badgePreview.length ? badgePreview.map(badge =>
             <Pressable key={badge.badge_id} accessibilityRole="button"
               accessibilityLabel={'View earned badge ' + badge.title}
               onPress={() => router.push('/member/badges')} style={styles.badgeThumb}>
-              {hasBadgeArt(badge.title) ? <BadgeArt title={badge.title} size={43}/> : <AppIcon name="badge" size={27} color="#9E733F"/>}
+              {hasBadgeArt(badge.title) ? <BadgeArt title={badge.title} size={43}/> : <AppIcon name="badge" size={27} color={mode === 'night' ? '#E0B7EF' : '#52684A'}/>}
             </Pressable>
-          ) : <AppIcon name="stamp" size={28} color="#A4895C"/>}
+          ) : <AppIcon name="stamp" size={28} color={mode === 'night' ? '#D6BADF' : '#6B815B'}/>}
         </View>
         <Pressable style={styles.seeBadges} accessibilityLabel="View all badges" onPress={() => router.push('/member/badges')}>
-          <AppIcon name="chevron-forward" color="#59472D" size={18}/>
+          <AppIcon name="chevron-forward" color={mode === 'night' ? '#D8BDE9' : '#425843'} size={18}/>
         </Pressable>
       </View>
     </View>
@@ -216,8 +216,10 @@ export function GoTrailheadScene({ displayName, greeting, rank, badges, weather,
 }
 
 const styles = StyleSheet.create({
-  wrapper: { borderRadius: 21, overflow: 'hidden', backgroundColor: '#F1E9D7', marginBottom: 7 },
-  cover: { minHeight: 239, overflow: 'hidden', backgroundColor: '#173C35' },
+  wrapper: { borderRadius: 21, overflow: 'hidden', backgroundColor: '#DCE5D7', marginBottom: 7 },
+  nightWrapper: { backgroundColor: '#34364F' },
+  cover: { minHeight: 239, overflow: 'hidden', backgroundColor: '#466858' },
+  nightCover: { backgroundColor: '#262941' },
   background: { ...StyleSheet.absoluteFillObject, height: '100%', width: '100%' },
   atmosphereLayer: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
   haze: { position: 'absolute', left: -40, top: 25, width: '120%', height: 110, borderRadius: 75 },
@@ -243,7 +245,10 @@ const styles = StyleSheet.create({
   welcomeLabel: { fontSize: 9, fontWeight: '900', letterSpacing: 1.25 },
   hello: { color: '#FFFFFF', fontWeight: '900', fontSize: 24, lineHeight: 29, marginTop: 5, textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 4 },
   description: { color: '#F5F2E8', fontSize: 12, marginTop: 5 },
-  badgesRibbon: { minHeight: 63, backgroundColor: '#F6F0E2', borderTopWidth: 1, borderTopColor: '#E2D7BE', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 13, gap: 6 },
+  badgesRibbon: { minHeight: 63, backgroundColor: '#DCE5D7', borderTopWidth: 1, borderTopColor: '#A6BEAB', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 13, gap: 6 },
+  nightBadgesRibbon: { backgroundColor: '#34364F', borderTopColor: '#58536F' },
+  nightBadgesTitle: { color: '#F2ECF7' },
+  nightBadgesCount: { color: '#C9BED7' },
   badgeIntro: { flex: 1, minWidth: 80 },
   badgeTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   badgesTitle: { fontWeight: '900', fontSize: 12, color: '#2C3326' },
