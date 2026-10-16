@@ -68,10 +68,11 @@ function eventRoute(item: DiscoveryItem) {
 function goDiscover(mode: string, query?: string) {
   router.push({ pathname: '/(tabs)/explore', params: { mode, ...(query ? { q: query } : {}) } });
 }
-export function ExperienceCard({ item, width = 238, onSavedChange }: {
+export function ExperienceCard({ item, width = 238, onSavedChange, dark = false }: {
   item: DiscoveryItem;
   width?: number;
   onSavedChange?: (id: string, saved: boolean) => void;
+  dark?: boolean;
 }) {
   const [saving, setSaving] = useState(false);
   const { session } = useAuth();
@@ -90,7 +91,7 @@ export function ExperienceCard({ item, width = 238, onSavedChange }: {
     } finally { setSaving(false); }
   }
   return <Pressable accessibilityRole="button" accessibilityLabel={`Open ${item.title}`}
-    onPress={() => eventRoute(item)} style={[styles.eventCard, { width }]}>
+    onPress={() => eventRoute(item)} style={[styles.eventCard, dark && styles.nightEventCard, { width }]}>
     <ImageBackground source={item.image ? { uri: item.image } : item.source === 'demo' ? DEFAULT_NIGHT : item.mode === 'nature' ? DEFAULT_NATURE : DEFAULT_NIGHT}
       style={styles.eventImage} imageStyle={styles.eventImageRadius}>
       <View style={styles.eventTag}><Text style={[styles.tagText, { color: accent }]}>{item.mode === 'night' ? 'NIGHTS' : 'NATURE'}</Text></View>
@@ -100,11 +101,11 @@ export function ExperienceCard({ item, width = 238, onSavedChange }: {
         style={styles.saveBadge}><AppIcon name={item.saved ? 'bookmark' : 'bookmark'} color={item.saved ? '#D7B45A' : '#FFFFFF'} size={18}/></Pressable> : null}
     </ImageBackground>
     <View style={styles.eventCopy}>
-      <Text style={styles.eventTitle} numberOfLines={2}>{item.title}</Text>
-      <Text style={styles.eventMeta} numberOfLines={1}>{item.city}{item.state ? `, ${item.state}` : ''} · {dateLabel(item.startsAt)}</Text>
+      <Text style={[styles.eventTitle, dark && styles.nightHeading]} numberOfLines={2}>{item.title}</Text>
+      <Text style={[styles.eventMeta, dark && styles.nightMutedText]} numberOfLines={1}>{item.city}{item.state ? `, ${item.state}` : ''} · {dateLabel(item.startsAt)}</Text>
       <View style={styles.eventBottom}>
-        <Text style={styles.eventCategory} numberOfLines={1}>{item.category}</Text>
-        <Text style={styles.eventPrice}>{item.priceLabel}</Text>
+        <Text style={[styles.eventCategory, dark && styles.nightMutedText]} numberOfLines={1}>{item.category}</Text>
+        <Text style={[styles.eventPrice, dark && styles.nightHeading]}>{item.priceLabel}</Text>
       </View>
     </View>
   </Pressable>;
@@ -367,14 +368,14 @@ export default function GoHome() {
     if (section === 'circle') return <View key="circle" style={styles.sectionBlock}>
       <View style={styles.sectionHeader}>
         <View style={styles.sectionLabelStack}>
-          <Text style={styles.overlineGold}>{mode === 'nature' ? 'OUTDOOR COMMUNITY' : 'CITY COMMUNITY'}</Text>
-          <Text style={styles.sectionTitle}>{mode === 'nature' ? 'From your outdoor circle' : 'From your city circle'}</Text>
+          <Text style={[styles.overlineGold, isNight && styles.nightAccent]}>{mode === 'nature' ? 'OUTDOOR COMMUNITY' : 'CITY COMMUNITY'}</Text>
+          <Text style={[styles.sectionTitle, isNight && styles.nightHeading]}>{mode === 'nature' ? 'From your outdoor circle' : 'From your city circle'}</Text>
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel="See all community activity" onPress={() => router.push('/communities')}>
-          <Text style={styles.seeAll}>See all →</Text>
+          <Text style={[styles.seeAll, isNight && styles.nightAccent]}>See all →</Text>
         </Pressable>
       </View>
-      {modePosts.length ? modePosts.map(post => <Pressable key={post.id} accessibilityRole="button" style={styles.pulseCard}
+      {modePosts.length ? modePosts.map(post => <Pressable key={post.id} accessibilityRole="button" style={[styles.pulseCard, isNight && styles.nightPanel]}
         accessibilityLabel={`Community update from ${post.author_name || 'a member'}`}
         onPress={() => post.group_id ? router.push({ pathname: '/groups/[id]', params: { id: post.group_id } }) : router.push('/communities')}>
         {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.pulsePhoto}
@@ -384,55 +385,55 @@ export default function GoHome() {
             {post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.pulseAvatar}/> :
               <View style={styles.pulseInitial}><Text style={styles.pulseInitialText}>{(post.author_name || 'M').slice(0, 1).toUpperCase()}</Text></View>}
             <View style={styles.flex}>
-              <Text style={styles.pulseAuthor} numberOfLines={1}>{post.author_name || 'Community member'}</Text>
-              <Text style={styles.pulseMeta} numberOfLines={1}>
+              <Text style={[styles.pulseAuthor, isNight && styles.nightHeading]} numberOfLines={1}>{post.author_name || 'Community member'}</Text>
+              <Text style={[styles.pulseMeta, isNight && styles.nightMutedText]} numberOfLines={1}>
                 {(post.group_id ? groupById.get(post.group_id) : null) || 'GO Melanated'} · {relativeDate(post.created_at)}
               </Text>
             </View>
           </View>
-          <Text style={styles.pulseBody} numberOfLines={post.image_url ? 3 : 2}>
+          <Text style={[styles.pulseBody, isNight && styles.nightMutedText]} numberOfLines={post.image_url ? 3 : 2}>
             {post.body || (post.post_type === 'photo' ? 'Shared a moment with the community.' : 'Shared an update.')}
           </Text>
-          {post.image_url && <Text style={styles.pulseExplore}>View story →</Text>}
+          {post.image_url && <Text style={[styles.pulseExplore, isNight && styles.nightAccent]}>View story →</Text>}
         </View>
         {!post.image_url && <AppIcon name="chevron-forward" color={MUTED} size={17}/>}
-      </Pressable>) : <Pressable accessibilityRole="button" style={styles.pulseEmpty} onPress={() => router.push('/communities')}>
+      </Pressable>) : <Pressable accessibilityRole="button" style={[styles.pulseEmpty, isNight && styles.nightPanel]} onPress={() => router.push('/communities')}>
         <View style={styles.pulseIcon}><AppIcon name="photos" color={primary} size={24}/></View>
-        <View style={styles.flex}><Text style={styles.pulseAuthor}>{mode === 'nature' ? 'Find your people outside' : 'Your city circle starts here'}</Text>
-          <Text style={styles.pulseBody}>{mode === 'nature' ? 'See outdoor stories and communities.' : 'Join a city-focused community to see its activity here.'}</Text></View>
+        <View style={styles.flex}><Text style={[styles.pulseAuthor, isNight && styles.nightHeading]}>{mode === 'nature' ? 'Find your people outside' : 'Your city circle starts here'}</Text>
+          <Text style={[styles.pulseBody, isNight && styles.nightMutedText]}>{mode === 'nature' ? 'See outdoor stories and communities.' : 'Join a city-focused community to see its activity here.'}</Text></View>
         <AppIcon name="chevron-forward" color={MUTED} size={18}/>
       </Pressable>}
     </View>;
     if (section === 'trail' && mode === 'night') return <View key="trail" style={styles.sectionBlock}>
       <View style={styles.sectionHeader}>
         <View style={styles.sectionLabelStack}>
-          <Text style={[styles.overlineGold, { color: '#765298' }]}>YOUR CITY LIFE</Text>
-          <Text style={styles.sectionTitle}>Your nights out</Text>
+          <Text style={[styles.overlineGold, styles.nightAccent]}>YOUR CITY LIFE</Text>
+          <Text style={[styles.sectionTitle, isNight && styles.nightHeading]}>Your nights out</Text>
         </View>
         <Pressable accessibilityRole="button" onPress={() => goDiscover('night')}>
-          <Text style={styles.seeAll}>City events →</Text>
+          <Text style={[styles.seeAll, isNight && styles.nightAccent]}>City events →</Text>
         </Pressable>
       </View>
       {upcomingRsvps.length ? upcomingRsvps.slice(0, 3).map(event =>
-        <Pressable key={event.id} style={styles.cityPlanCard} accessibilityRole="button"
+        <Pressable key={event.id} style={[styles.cityPlanCard, isNight && styles.nightPanel]} accessibilityRole="button"
           accessibilityLabel={'Open upcoming city outing ' + event.title}
           onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}>
           {event.image_url ? <Image source={{ uri: event.image_url }} style={styles.cityPlanImage}/> :
             <View style={styles.cityPlanIcon}><AppIcon name="calendar" color="#68438F" size={23}/></View>}
           <View style={styles.flex}>
             <Text style={styles.cityPlanLabel}>YOU&apos;RE GOING · {dateLabel(event.starts_at)}</Text>
-            <Text style={styles.cityPlanTitle} numberOfLines={1}>{event.title}</Text>
-            <Text style={styles.cityPlanMeta} numberOfLines={1}>{event.city}, {event.state}</Text>
+            <Text style={[styles.cityPlanTitle, isNight && styles.nightHeading]} numberOfLines={1}>{event.title}</Text>
+            <Text style={[styles.cityPlanMeta, isNight && styles.nightMutedText]} numberOfLines={1}>{event.city}, {event.state}</Text>
           </View>
           <AppIcon name="chevron-forward" color="#77588B" size={19}/>
         </Pressable>) :
-        <Pressable accessibilityRole="button" style={styles.cityEmpty}
+        <Pressable accessibilityRole="button" style={[styles.cityEmpty, isNight && styles.nightPanel]}
           onPress={() => goDiscover('night')}>
           <AppIcon name="calendar" color="#7B54A1" size={27}/>
           <View style={styles.flex}>
-            <Text style={styles.cityPlanTitle}>No city outings on your calendar yet</Text>
-            <Text style={styles.cityPlanMeta}>Find music, food, art, and social experiences.</Text>
-            <Text style={styles.cityPlanLink}>Explore Night experiences →</Text>
+            <Text style={[styles.cityPlanTitle, isNight && styles.nightHeading]}>No city outings on your calendar yet</Text>
+            <Text style={[styles.cityPlanMeta, isNight && styles.nightMutedText]}>Find music, food, art, and social experiences.</Text>
+            <Text style={[styles.cityPlanLink, isNight && styles.nightAccent]}>Explore Night experiences →</Text>
           </View>
         </Pressable>}
       <Pressable accessibilityRole="button" style={styles.universalLink}
@@ -447,8 +448,8 @@ export default function GoHome() {
       const nextLabel = nextMilestone ? `${nextMilestone - journey.length} more to your next chapter` : 'Your story keeps growing';
       return <View key="trail" style={styles.sectionBlock}>
         <View style={styles.sectionLabelStack}>
-          <Text style={styles.overlineGold}>YOUR OUTDOOR LIFE, REMEMBERED</Text>
-          <Text style={styles.sectionTitle}>{mode === 'nature' ? 'A story worth keeping' : 'The moments you made'}</Text>
+          <Text style={[styles.overlineGold, isNight && styles.nightAccent]}>YOUR OUTDOOR LIFE, REMEMBERED</Text>
+          <Text style={[styles.sectionTitle, isNight && styles.nightHeading]}>{mode === 'nature' ? 'A story worth keeping' : 'The moments you made'}</Text>
         </View>
         <Pressable style={styles.journeySpotlight} accessibilityRole="button" accessibilityLabel="Open Your Trail"
           onPress={() => router.push('/member/journey')}>
@@ -477,15 +478,15 @@ export default function GoHome() {
       </View>;
     }
     return <View key="picks" style={styles.sectionBlock}>
-      <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{mode === 'nature' ? 'Explore the outdoors' : 'Around town'}</Text>
-        <Pressable accessibilityRole="button" onPress={() => goDiscover(mode)}><Text style={styles.seeAll}>Discover →</Text></Pressable>
+      <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, isNight && styles.nightHeading]}>{mode === 'nature' ? 'Explore the outdoors' : 'Around town'}</Text>
+        <Pressable accessibilityRole="button" onPress={() => goDiscover(mode)}><Text style={[styles.seeAll, isNight && styles.nightAccent]}>Discover →</Text></Pressable>
       </View>
-      <Text style={styles.sectionIntro}>{savedCategories.size
+      <Text style={[styles.sectionIntro, isNight && styles.nightMutedText]}>{savedCategories.size
         ? (mode === 'nature' ? 'Outdoor ideas based on your saved experiences.' : 'City experiences based on your saved interests.')
         : (mode === 'nature' ? 'Outdoor adventures to make your own.' : 'Food, music, culture, and local gatherings.') }</Text>
-      <View style={styles.moodPanel}>
+      <View style={[styles.moodPanel, isNight && styles.nightPanel]}>
         <View style={styles.moodHead}><AppIcon name="sparkles" color={primary} size={20}/>
-          <Text style={styles.moodTitle}>What sounds good today?</Text></View>
+          <Text style={[styles.moodTitle, isNight && styles.nightHeading]}>What sounds good today?</Text></View>
         <View style={styles.moodRow}>{modeMoodOptions.map(option =>
           <Pressable key={option.id} accessibilityRole="button" accessibilityState={{ selected: mood === option.id }}
             onPress={() => {
@@ -493,16 +494,16 @@ export default function GoHome() {
               setMood(chosen);
               if (session?.user.id) void Storage.setItem('go-home-mood:v1:' + session.user.id + ':' + mode, chosen ?? '').catch(() => {});
             }}
-            style={[styles.moodChip, mood === option.id && { borderColor: primary, backgroundColor: mode === 'nature' ? '#D8EEDB' : '#EDE0F6' }]}>
-            <Text style={styles.moodChipText}>{option.icon + ' ' + option.label}</Text>
+            style={[styles.moodChip, isNight && styles.nightMoodChip, mood === option.id && { borderColor: isNight ? '#CCB1DC' : primary, backgroundColor: isNight ? '#625477' : '#C7D9C3' }]}>
+            <Text style={[styles.moodChipText, isNight && styles.nightHeading]}>{option.icon + ' ' + option.label}</Text>
           </Pressable>)}</View>
       </View>
       {!!suggestions.length && <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cards}>
-        {suggestions.map(item => <ExperienceCard key={item.source + ':' + item.id} item={item} width={cardWidth} onSavedChange={updateSaved}/>)}
+        {suggestions.map(item => <ExperienceCard key={item.source + ':' + item.id} item={item} width={cardWidth} dark={isNight} onSavedChange={updateSaved}/>)}
       </ScrollView>}
-      {!suggestions.length && <Pressable style={styles.empty} onPress={() => goDiscover(mode, mood ? modeMoodOptions.find(value => value.id === mood)?.search : undefined)}>
-        <Text style={styles.emptyTitle}>Nothing matching that mood is listed yet.</Text>
-        <Text style={styles.muted}>Browse more experiences in Discover →</Text>
+      {!suggestions.length && <Pressable style={[styles.empty, isNight && styles.nightPanel]} onPress={() => goDiscover(mode, mood ? modeMoodOptions.find(value => value.id === mood)?.search : undefined)}>
+        <Text style={[styles.emptyTitle, isNight && styles.nightHeading]}>Nothing matching that mood is listed yet.</Text>
+        <Text style={[styles.muted, isNight && styles.nightMutedText]}>Browse more experiences in Discover →</Text>
       </Pressable>}
       <Pressable style={styles.editorial} accessibilityRole="button" onPress={() => router.push(mode === 'nature' ? '/trail-guide' : '/communities')}>
         <ImageBackground source={mode === 'nature' ? DEFAULT_NATURE : DEFAULT_NIGHT} imageStyle={styles.editorialImage} style={styles.editorialBackground}>
@@ -685,6 +686,9 @@ const styles = StyleSheet.create({
   nightSwitcher: { backgroundColor: '#39394F' },
   nightQuickCircle: { backgroundColor: '#35314D' },
   nightQuickTrail: { backgroundColor: '#38364F' },
+  nightMoodChip: { backgroundColor: '#42425D', borderColor: '#66627B' },
+  nightPulseInitial: { backgroundColor: '#55516F' },
+  nightEventCard: { backgroundColor: '#35364F', borderColor: '#56516B' },
   nightRow: { borderTopColor: '#5E5B72' },
   content: { paddingHorizontal: 16, paddingTop: 11, paddingBottom: 32, width: '100%', maxWidth: 970, alignSelf: 'center' },
   flex: { flex: 1 },
@@ -696,7 +700,7 @@ const styles = StyleSheet.create({
   nextEyebrow: { fontSize: 9, color: '#68836E', letterSpacing: 1, fontWeight: '900' },
   nextTitle: { fontSize: 14, fontWeight: '900', color: INK, marginTop: 2 },
   nextMeta: { fontSize: 11, color: MUTED, marginTop: 2 },
-  eyebrow: { fontWeight: '900', fontSize: 10, color: '#427B59', letterSpacing: 1.4 },
+  eyebrow: { fontWeight: '900', fontSize: 10, color: '#234735', letterSpacing: 1.4 },
   greeting: { color: INK, fontWeight: '900', fontSize: 22, marginTop: 3, letterSpacing: -0.5 },
   greetingSub: { color: MUTED, fontSize: 11, marginTop: 4 },
   profileButton: { backgroundColor: '#D6E1D3', borderRadius: 24, padding: 11 },
@@ -716,7 +720,7 @@ const styles = StyleSheet.create({
   actionTitle: { color: INK, fontSize: 13, fontWeight: '900' }, actionCopy: { color: '#5F6357', fontSize: 11, marginTop: 3, lineHeight: 17 },
   loading: { marginVertical: 12 }, error: { color: '#A33C3C', fontSize: 12, fontWeight: '800', paddingVertical: 10 },
   personalizeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
-  homeLabel: { color: '#74817A', fontWeight: '900', fontSize: 10, letterSpacing: 1.4 },
+  homeLabel: { color: '#314E39', fontWeight: '900', fontSize: 10, letterSpacing: 1.4 },
   editButton: { flexDirection: 'row', gap: 5, alignItems: 'center', paddingVertical: 7, paddingHorizontal: 9 },
   editText: { color: '#315A46', fontSize: 12, fontWeight: '800' },
   nightWelcome: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: '#2A1E43', borderRadius: 16, padding: 16, marginTop: 12 },
@@ -728,14 +732,14 @@ const styles = StyleSheet.create({
   worldAction: { flex: 1, minHeight: 43, backgroundColor: '#DBE4D7', borderRadius: 13, paddingHorizontal: 12, flexDirection: 'row', gap: 7, alignItems: 'center' },
   nightAction: { backgroundColor: '#494561' },
   worldActionText: { fontSize: 12, fontWeight: '900' },
-  cityPlanCard: { minHeight: 82, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  cityPlanCard: { minHeight: 82, backgroundColor: '#E9EEE4', borderRadius: 16, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
   cityPlanImage: { width: 74, height: 62, borderRadius: 11 },
   cityPlanIcon: { width: 68, height: 62, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EBDFF3' },
   cityPlanLabel: { fontSize: 9, color: '#7C549A', fontWeight: '900', letterSpacing: 0.7 },
   cityPlanTitle: { color: INK, fontWeight: '900', fontSize: 13, marginTop: 3 },
   cityPlanMeta: { color: MUTED, fontSize: 11, marginTop: 3 },
   cityPlanLink: { color: '#7046A1', fontSize: 11, marginTop: 7, fontWeight: '900' },
-  cityEmpty: { flexDirection: 'row', gap: 12, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, alignItems: 'center' },
+  cityEmpty: { flexDirection: 'row', gap: 12, backgroundColor: '#E9EEE4', borderRadius: 16, padding: 16, alignItems: 'center' },
   universalLink: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1E8F7', borderRadius: 14, minHeight: 46, padding: 12, gap: 9 },
   universalText: { color: '#684582', fontWeight: '800', fontSize: 11, flex: 1 },
   quickTiles: { flexDirection: 'row', gap: 10, marginTop: 3, alignItems: 'stretch' },
@@ -770,7 +774,7 @@ const styles = StyleSheet.create({
   reset: { color: '#2D6C49', fontSize: 12, fontWeight: '800', marginTop: 4, padding: 6 },
   sectionBlock: { marginTop: 19, gap: 11 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 7 },
-  sectionTitle: { color: INK, fontSize: 21, fontWeight: '900', letterSpacing: -0.3, flexShrink: 1 },
+  sectionTitle: { color: '#1F3B2E', fontSize: 21, fontWeight: '900', letterSpacing: -0.3, flexShrink: 1 },
   seeAll: { color: '#286B91', fontSize: 12, fontWeight: '800' },
   circleCard: { borderRadius: 22, padding: 20, minHeight: 156, justifyContent: 'space-between' },
   circleHeading: { flexDirection: 'row', alignItems: 'center', gap: 13 },
@@ -780,8 +784,8 @@ const styles = StyleSheet.create({
   circleBody: { color: '#DDE7DF', fontSize: 12, lineHeight: 19, marginTop: 14 },
   overlineGold: { color: '#8B7448', fontSize: 9, letterSpacing: 1.4, fontWeight: '900', marginBottom: 4 },
   sectionLabelStack: { gap: 1, flex: 1 },
-  pulseCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 17, overflow: 'hidden', minHeight: 83, borderWidth: 1, borderColor: '#E8E9E3', gap: 0 },
-  pulseEmpty: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 13, borderRadius: 16, gap: 10, minHeight: 86 },
+  pulseCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E9EEE4', borderRadius: 17, overflow: 'hidden', minHeight: 83, borderWidth: 1, borderColor: '#E8E9E3', gap: 0 },
+  pulseEmpty: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E9EEE4', padding: 13, borderRadius: 16, gap: 10, minHeight: 86 },
   pulsePhoto: { width: 118, alignSelf: 'stretch', minHeight: 112 },
   pulseText: { flex: 1, padding: 12, gap: 8 },
   pulseByline: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -807,14 +811,14 @@ const styles = StyleSheet.create({
   reflectionTitle: { color: '#463A22', fontWeight: '900', fontSize: 14 },
   reflectionCopy: { color: '#685D49', fontSize: 12, marginTop: 4 },
   sectionIntro: { color: MUTED, fontSize: 12, lineHeight: 18, marginTop: -3 },
-  moodPanel: { backgroundColor: '#FFF', borderRadius: 19, padding: 15, gap: 12, borderWidth: 1, borderColor: '#E3EAE1' },
+  moodPanel: { backgroundColor: '#E8EEE4', borderRadius: 19, padding: 15, gap: 12, borderWidth: 1, borderColor: '#E3EAE1' },
   moodHead: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   moodTitle: { color: INK, fontWeight: '900', fontSize: 14 },
   moodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  moodChip: { borderWidth: 1, borderColor: '#DDE5DF', backgroundColor: '#FAFBF9', borderRadius: 16, paddingHorizontal: 11, paddingVertical: 10, minHeight: 40 },
-  moodChipText: { color: INK, fontSize: 12, fontWeight: '800' },
+  moodChip: { borderWidth: 1, borderColor: '#B8C7B6', backgroundColor: '#DFE8DA', borderRadius: 16, paddingHorizontal: 11, paddingVertical: 10, minHeight: 40 },
+  moodChipText: { color: '#254233', fontSize: 12, fontWeight: '800' },
   cards: { gap: 12, paddingBottom: 6 },
-  empty: { backgroundColor: '#FFF', borderRadius: 16, padding: 19 },
+  empty: { backgroundColor: '#E9EEE4', borderRadius: 16, padding: 19 },
   emptyTitle: { color: INK, fontSize: 14, fontWeight: '900' },
   muted: { color: MUTED, fontSize: 12, lineHeight: 18, marginTop: 5 },
   editorial: { overflow: 'hidden', borderRadius: 21, marginTop: 4 },
@@ -824,11 +828,11 @@ const styles = StyleSheet.create({
   editorialTitle: { color: '#FFF', fontSize: 20, fontWeight: '900', maxWidth: 330, marginTop: 6 },
   editorialAction: { color: '#FFF', fontSize: 12, fontWeight: '900', marginTop: 11 },
   crossCard: { backgroundColor: '#E7EDE2', borderRadius: 21, padding: 21, marginTop: 24, borderWidth: 1, borderColor: '#E0E6DF' },
-  crossKicker: { color: '#547A63', letterSpacing: 1.5, fontWeight: '900', fontSize: 10 },
+  crossKicker: { color: '#2F583B', letterSpacing: 1.5, fontWeight: '900', fontSize: 10 },
   crossTitle: { color: INK, fontSize: 18, fontWeight: '900', marginTop: 7 },
   crossAction: { color: '#37654C', fontWeight: '900', fontSize: 12, marginTop: 13 },
   bottomSpace: { height: 12 },
-  eventCard: { backgroundColor: '#FFFFFF', borderRadius: 15, overflow: 'hidden', borderWidth: 1, borderColor: '#E4E7E4' },
+  eventCard: { backgroundColor: '#E9EEE4', borderRadius: 15, overflow: 'hidden', borderWidth: 1, borderColor: '#E4E7E4' },
   eventImage: { height: 130, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', padding: 9 },
   eventImageRadius: { borderTopLeftRadius: 14, borderTopRightRadius: 14 },
   eventTag: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 14, backgroundColor: '#FFFFFFE9' },
@@ -837,7 +841,7 @@ const styles = StyleSheet.create({
   demoTagText: { fontSize: 9, fontWeight: '900', color: '#FFFFFF' },
   saveBadge: { backgroundColor: '#15221EC9', padding: 7, borderRadius: 20 },
   eventCopy: { padding: 12, gap: 5 },
-  eventTitle: { color: INK, fontSize: 14, fontWeight: '800', minHeight: 35 },
+  eventTitle: { color: '#1E362A', fontSize: 14, fontWeight: '800', minHeight: 35 },
   eventMeta: { color: MUTED, fontSize: 11 },
   eventBottom: { marginTop: 4, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'space-between' },
   eventCategory: { color: MUTED, flex: 1, fontSize: 10 },
