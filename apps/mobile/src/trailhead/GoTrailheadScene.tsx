@@ -104,12 +104,13 @@ type Props = {
   badges: MemberBadge[];
   weather: WeatherForecast | null;
   mode: 'nature' | 'night';
+  appearance?: 'day' | 'dark';
   homeCity: string;
   homeState: string;
   nightImage?: string | null;
 };
 
-export function GoTrailheadScene({ displayName, greeting, rank, badges, weather, mode, homeCity, homeState, nightImage }: Props) {
+export function GoTrailheadScene({ displayName, greeting, rank, badges, weather, mode, homeCity, homeState, nightImage, appearance = 'day' }: Props) {
   const [imageFailed, setImageFailed] = useState(false);
   const [sceneTime, setSceneTime] = useState(() => new Date());
   useEffect(() => {
@@ -132,6 +133,10 @@ export function GoTrailheadScene({ displayName, greeting, rank, badges, weather,
   const location = weather ? [weather.location.name, weather.location.region].filter(Boolean).join(', ') : homeLocation;
   const temp = weather && Number.isFinite(weather.current.temp_f) ? Math.round(weather.current.temp_f) + '°' : null;
   const badgePreview = badges.slice(0, 3);
+  const day = appearance === 'day';
+  const badgesSurface = mode === 'nature' ? (day ? '#DCE5D7' : '#16201B') : (day ? '#E8E1EF' : '#34364F');
+  const badgeText = mode === 'nature' ? (day ? '#20382C' : '#FFF8E8') : (day ? '#322B46' : '#F4EFF8');
+  const badgeMuted = mode === 'nature' ? (day ? '#4B6253' : '#AEB8B2') : (day ? '#61596C' : '#C9C3D5');
 
   useEffect(() => { setImageFailed(false); }, [nightImage, rank, mode, weatherTheme, phase]);
 
@@ -190,13 +195,13 @@ export function GoTrailheadScene({ displayName, greeting, rank, badges, weather,
           </View>
         </View>
       </View>
-      <View style={[styles.badgesRibbon, mode === 'night' && styles.nightBadgesRibbon]}>
+      <View style={[styles.badgesRibbon, { backgroundColor: badgesSurface, borderTopColor: mode === 'nature' ? day ? '#B7C6B8' : '#2A382F' : day ? '#A8A0B6' : '#56516B' }]}>
         <View style={styles.badgeIntro}>
           <View style={styles.badgeTitleLine}>
             <AppIcon name="badge" color={mode === 'night' ? '#D8BDE9' : '#52684A'} size={17} />
-            <Text style={[styles.badgesTitle, mode === 'night' && styles.nightBadgesTitle]}>Your badges</Text>
+            <Text style={[styles.badgesTitle, { color: badgeText }]}>Your badges</Text>
           </View>
-          <Text style={[styles.badgesCount, mode === 'night' && styles.nightBadgesCount]}>{badges.length ? badges.length + ' earned' : 'Your first badge awaits'}</Text>
+          <Text style={[styles.badgesCount, { color: badgeMuted }]}>{badges.length ? badges.length + ' earned' : 'Your first badge awaits'}</Text>
         </View>
         <View style={styles.badgeThumbs}>
           {badgePreview.length ? badgePreview.map(badge =>
