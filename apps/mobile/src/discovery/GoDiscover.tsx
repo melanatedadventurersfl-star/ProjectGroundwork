@@ -10,7 +10,7 @@ import { supabase } from '../lib/supabase';
 import { AppIcon } from '../ui/AppIcon';
 import { filterDiscovery, loadDiscoveryItems, proximityReason, type DiscoveryFilters, type DiscoveryItem } from './catalog';
 import { ExperienceCard } from './GoHome';
-import { useGoMode } from './useGoMode';
+import { useGoTheme } from '../theme/useGoTheme';
 
 const NAVY = '#172E49';
 const INK = '#172122';
@@ -33,16 +33,19 @@ function openItem(item: DiscoveryItem) {
 function dateLabel(value: string) {
   return new Date(value).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
-function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+function Chip({ label, active, onPress, palette }: {
+  label: string; active: boolean; onPress: () => void;
+  palette: { chip: string; elevated: string; border: string; accent: string; text: string };
+}) {
   return <Pressable accessibilityRole="button" accessibilityState={{ selected: active }}
-    onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
-    <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+    onPress={onPress} style={[styles.chip, { backgroundColor: active ? palette.elevated : palette.chip, borderColor: active ? palette.accent : palette.border }]}>
+    <Text style={[styles.chipText, { color: palette.text }]}>{label}</Text>
   </Pressable>;
 }
 
 export default function GoDiscover() {
   const { session } = useAuth();
-  const { mode: selectedWorld, chooseMode } = useGoMode(session?.user.id);
+  const { mode: selectedWorld, chooseMode, palette, isDark } = useGoTheme(session?.user.id);
   const { mode: routeMode, q } = useLocalSearchParams<{ mode?: string; q?: string }>();
   const { width } = useWindowDimensions();
   const [filters, setFilters] = useState<DiscoveryFilters>(() => ({ ...DEFAULT_FILTERS, mode: selectedWorld }));
@@ -97,18 +100,18 @@ export default function GoDiscover() {
     setItems(current => current.map(item => item.id === id && item.source === 'adventure' ? { ...item, saved } : item));
   const showIntro = !filters.query && filters.when === 'any' && !filters.savedOnly;
 
-  return <ScrollView style={styles.screen} contentContainerStyle={styles.content}
+  return <ScrollView style={[styles.screen, { backgroundColor: palette.background }]} contentContainerStyle={styles.content}
     keyboardShouldPersistTaps="handled"
     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={NAVY}/>}>
-    <View style={styles.intro}>
+    <View style={[styles.intro, { backgroundColor: selectedWorld === 'night' ? '#36314E' : '#244C3A' }]}>
       <Text style={styles.overline}>GO MELANATED DISCOVER</Text>
       <Text style={styles.title}>Where to next?</Text>
       <Text style={styles.subtitle}>Explore adventures, places, and experiences, all in one place.</Text>
     </View>
-    <View style={styles.searchRow}>
+    <View style={[styles.searchRow, { backgroundColor: palette.surface, borderColor: palette.border }]}>
       <AppIcon name="search" color={MUTED} size={21}/>
-      <TextInput style={styles.search} value={filters.query} onChangeText={value => setFilter('query', value)}
-        placeholder="Search events, places, activities…" placeholderTextColor="#76838C" returnKeyType="search"
+      <TextInput style={[styles.search, { color: palette.text }]} value={filters.query} onChangeText={value => setFilter('query', value)}
+        placeholder="Search events, places, activities…" placeholderTextColor={palette.muted} returnKeyType="search"
         accessibilityLabel="Search all experiences"/>
       {filters.query ? <Pressable accessibilityLabel="Clear search" onPress={() => setFilter('query', '')}><AppIcon name="close" color={MUTED} size={20}/></Pressable> : null}
     </View>
@@ -116,69 +119,69 @@ export default function GoDiscover() {
       {(['all', 'nature', 'night'] as const).map(mode =>
         <Pressable key={mode} onPress={() => { setFilter('mode', mode); if (mode !== 'all') chooseMode(mode); }}
           accessibilityRole="button" accessibilityState={{ selected: filters.mode === mode }}
-          style={[styles.modePill, filters.mode === mode && (mode === 'nature' ? styles.selectedNature : mode === 'night' ? styles.selectedNight : styles.selectedAll)]}>
-          <Text style={[styles.modePillText, filters.mode === mode && styles.selectedText]}>{mode === 'all' ? 'Everything' : mode === 'nature' ? '🌿 Nature' : '🌆 Nights'}</Text>
+          style={[styles.modePill, { backgroundColor: palette.elevated }, filters.mode === mode && { backgroundColor: palette.accent }]}>
+          <Text style={[styles.modePillText, { color: filters.mode === mode ? palette.background : palette.text }]}>{mode === 'all' ? 'Everything' : mode === 'nature' ? '🌿 Nature' : '🌆 Nights'}</Text>
         </Pressable>)}
     </View>
     <View style={styles.filterToolbar}>
-      <Pressable onPress={() => setMoreFilters(current => !current)} style={[styles.moreButton, moreFilters && styles.moreButtonActive]}>
-        <AppIcon name="filter" color={moreFilters ? '#FFFFFF' : NAVY} size={16}/>
-        <Text style={[styles.moreText, moreFilters && { color: '#FFFFFF' }]}>Filters</Text>
+      <Pressable onPress={() => setMoreFilters(current => !current)} style={[styles.moreButton, { backgroundColor: moreFilters ? palette.accent : palette.elevated }]}>
+        <AppIcon name="filter" color={moreFilters ? palette.background : palette.text} size={16}/>
+        <Text style={[styles.moreText, { color: moreFilters ? palette.background : palette.text }]}>Filters</Text>
       </Pressable>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.compactFilters}>
-        <Chip label={dateButtons.find(x => x.key === filters.when)?.label || 'Anytime'}
+        <Chip palette={palette} label={dateButtons.find(x => x.key === filters.when)?.label || 'Anytime'}
           active={filters.when !== 'any'} onPress={() => setMoreFilters(true)}/>
-        <Chip label={filters.radius == null ? 'Any distance' : `${filters.radius} mi`}
+        <Chip palette={palette} label={filters.radius == null ? 'Any distance' : `${filters.radius} mi`}
           active={filters.radius != null} onPress={() => setMoreFilters(true)}/>
-        <Chip label="Free" active={filters.freeOnly} onPress={() => setFilter('freeOnly', !filters.freeOnly)}/>
-        <Chip label="Saved" active={filters.savedOnly} onPress={() => setFilter('savedOnly', !filters.savedOnly)}/>
+        <Chip palette={palette} label="Free" active={filters.freeOnly} onPress={() => setFilter('freeOnly', !filters.freeOnly)}/>
+        <Chip palette={palette} label="Saved" active={filters.savedOnly} onPress={() => setFilter('savedOnly', !filters.savedOnly)}/>
       </ScrollView>
     </View>
-    {moreFilters && <View style={styles.filtersBox}>
-      <Text style={styles.filterTitle}>When</Text>
+    {moreFilters && <View style={[styles.filtersBox, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+      <Text style={[styles.filterTitle, { color: palette.text }]}>When</Text>
       <View style={styles.chipsWrap}>
-        {dateButtons.map(x => <Chip key={x.key} label={x.label} active={filters.when === x.key}
+        {dateButtons.map(x => <Chip palette={palette} key={x.key} label={x.label} active={filters.when === x.key}
           onPress={() => setFilter('when', x.key)}/>)}
       </View>
-      <Text style={styles.filterTitle}>Distance from {homeLocation ? `${homeLocation.city}, ${homeLocation.state}` : 'your home location'}</Text>
-      {!center && <Text style={styles.helper}>Add a supported home city and state in your profile to filter by distance.</Text>}
+      <Text style={[styles.filterTitle, { color: palette.text }]}>Distance from {homeLocation ? `${homeLocation.city}, ${homeLocation.state}` : 'your home location'}</Text>
+      {!center && <Text style={[styles.helper, { color: palette.muted }]}>Add a supported home city and state in your profile to filter by distance.</Text>}
       <View style={styles.chipsWrap}>
-        {distanceButtons.map(x => <Chip key={String(x.key)} label={x.label}
+        {distanceButtons.map(x => <Chip palette={palette} key={String(x.key)} label={x.label}
           active={filters.radius === x.key} onPress={() => setFilter('radius', center ? x.key : null)}/>)}
       </View>
       <Pressable onPress={() => { setFilters({ ...DEFAULT_FILTERS, mode: filters.mode }); setMoreFilters(false); }}>
-        <Text style={styles.reset}>Reset filters</Text>
+        <Text style={[styles.reset, { color: palette.accent }]}>Reset filters</Text>
       </Pressable>
     </View>}
 
     {error ? <Text style={styles.error}>{error}</Text> : null}
     {loading ? <ActivityIndicator color={NAVY} style={styles.loader}/> : null}
-    {!loading && <View style={styles.resultsCount}><Text style={styles.resultsText}>{visible.length} {activeLabel.toLowerCase()} {visible.length === 1 ? 'experience' : 'experiences'}</Text>
-      {homeLocation && <Text style={styles.resultsLocation}>{homeLocation.city}, {homeLocation.state}</Text>}</View>}
+    {!loading && <View style={styles.resultsCount}><Text style={[styles.resultsText, { color: palette.text }]}>{visible.length} {activeLabel.toLowerCase()} {visible.length === 1 ? 'experience' : 'experiences'}</Text>
+      {homeLocation && <Text style={[styles.resultsLocation, { color: palette.muted }]}>{homeLocation.city}, {homeLocation.state}</Text>}</View>}
 
-    {!loading && !visible.length ? <View style={styles.empty}>
+    {!loading && !visible.length ? <View style={[styles.empty, { backgroundColor: palette.surface }]}>
       <AppIcon name="search" color={MUTED} size={30}/>
-      <Text style={styles.emptyTitle}>No matching experiences right now</Text>
-      <Text style={styles.helper}>Try another date, increase the distance, or clear your filters.</Text>
+      <Text style={[styles.emptyTitle, { color: palette.text }]}>No matching experiences right now</Text>
+      <Text style={[styles.helper, { color: palette.muted }]}>Try another date, increase the distance, or clear your filters.</Text>
       <Pressable style={styles.clearButton} onPress={() => setFilters(DEFAULT_FILTERS)}><Text style={styles.clearText}>Clear filters</Text></Pressable>
     </View> : null}
 
     {!loading && visible.length > 0 && <>
       {showIntro && <View style={styles.sectionHeader}><View>
-        <Text style={styles.sectionTitle}>For You</Text>
-        <Text style={styles.sectionNote}>{savedCategories.size ? 'Your saved interests and upcoming experiences' : 'A selection of upcoming experiences'}</Text>
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>For You</Text>
+        <Text style={[styles.sectionNote, { color: palette.muted }]}>{savedCategories.size ? 'Your saved interests and upcoming experiences' : 'A selection of upcoming experiences'}</Text>
       </View></View>}
       {showIntro && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardRow}>
         {recommended.map(item => <View key={`rec:${item.source}:${item.id}`} style={{ width: tileWidth }}>
-          <ExperienceCard item={item} width={tileWidth} onSavedChange={onSavedChange}/>
-          {savedCategories.has(item.category.toLowerCase()) && <Text style={styles.reason}>Because you saved {item.category.toLowerCase()} experiences</Text>}
+          <ExperienceCard item={item} width={tileWidth} dark={isDark} palette={palette} onSavedChange={onSavedChange}/>
+          {savedCategories.has(item.category.toLowerCase()) && <Text style={[styles.reason, { color: palette.muted }]}>Because you saved {item.category.toLowerCase()} experiences</Text>}
         </View>)}
       </ScrollView>}
 
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Happening Soon</Text>
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>Happening Soon</Text>
         <Pressable onPress={() => setExpanded(value => !value)}>
-          <Text style={styles.sectionLink}>{expanded ? 'Show less' : 'See all'} →</Text>
+          <Text style={[styles.sectionLink, { color: palette.accent }]}>{expanded ? 'Show less' : 'See all'} →</Text>
         </Pressable>
       </View>
       {(expanded ? upcoming : upcoming.slice(0, 5)).map(item => <Pressable key={`soon:${item.source}:${item.id}`}
@@ -187,34 +190,34 @@ export default function GoDiscover() {
           <AppIcon name={item.mode === 'nature' ? 'trail' : 'calendar'} color={item.mode === 'nature' ? '#26683D' : '#6F3BA2'} size={19}/>
         </View>
         <View style={styles.flex}>
-          <Text style={styles.resultName} numberOfLines={2}>{item.title}{item.source === 'demo' ? ' · DEMO' : ''}</Text>
-          <Text style={styles.resultMeta}>{dateLabel(item.startsAt)} · {item.city}, {item.state}</Text>
-          <Text style={styles.resultMeta}>{item.priceLabel} · {item.mode === 'nature' ? 'Nature' : 'Nights'}</Text>
+          <Text style={[styles.resultName, { color: palette.text }]} numberOfLines={2}>{item.title}{item.source === 'demo' ? ' · DEMO' : ''}</Text>
+          <Text style={[styles.resultMeta, { color: palette.muted }]}>{dateLabel(item.startsAt)} · {item.city}, {item.state}</Text>
+          <Text style={[styles.resultMeta, { color: palette.muted }]}>{item.priceLabel} · {item.mode === 'nature' ? 'Nature' : 'Nights'}</Text>
         </View>
         <AppIcon name="chevron-forward" size={19} color={MUTED}/>
       </Pressable>)}
 
       {center && !!nearYou.length && <View>
-        <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Near You</Text>
-          <Text style={styles.sectionNote}>From {homeLocation?.city}</Text></View>
+        <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: palette.text }]}>Near You</Text>
+          <Text style={[styles.sectionNote, { color: palette.muted }]}>From {homeLocation?.city}</Text></View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardRow}>
           {nearYou.map(item => <View key={`near:${item.source}:${item.id}`} style={{ width: tileWidth }}>
-            <ExperienceCard item={item} width={tileWidth} onSavedChange={onSavedChange}/>
-            <Text style={styles.reason}>{proximityReason(item, center)}</Text>
+            <ExperienceCard item={item} width={tileWidth} dark={isDark} palette={palette} onSavedChange={onSavedChange}/>
+            <Text style={[styles.reason, { color: palette.muted }]}>{proximityReason(item, center)}</Text>
           </View>)}
         </ScrollView>
       </View>}
 
-      {filters.mode === 'all' && <View style={styles.tryCard}>
+      {filters.mode === 'all' && <View style={[styles.tryCard, { backgroundColor: palette.elevated }]}>
         <AppIcon name="sparkles" color="#33759A" size={25}/>
         <View style={styles.flex}>
-          <Text style={styles.tryTitle}>Try something different</Text>
-          <Text style={styles.helper}>Switch between Nature and Nights to explore the city, from morning coffee to evening music.</Text>
+          <Text style={[styles.tryTitle, { color: palette.text }]}>Try something different</Text>
+          <Text style={[styles.helper, { color: palette.muted }]}>Switch between Nature and Nights to explore the city, from morning coffee to evening music.</Text>
         </View>
       </View>}
-      <Pressable style={styles.communityLink} onPress={() => router.push('/communities')}>
+      <Pressable style={[styles.communityLink, { backgroundColor: palette.surface }]} onPress={() => router.push('/communities')}>
         <AppIcon name="community" color={NAVY} size={21}/>
-        <Text style={styles.communityLinkText}>Find communities and people to explore with</Text>
+        <Text style={[styles.communityLinkText, { color: palette.text }]}>Find communities and people to explore with</Text>
         <AppIcon name="chevron-forward" size={18} color={NAVY}/>
       </Pressable>
     </>}

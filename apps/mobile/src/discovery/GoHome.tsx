@@ -19,7 +19,7 @@ import { GoTrailheadScene } from '../trailhead/GoTrailheadScene';
 import { AppIcon } from '../ui/AppIcon';
 import { classifyExperience, loadDiscoveryItems, saveDiscoveryAdventure, type DiscoveryItem } from './catalog';
 import { belongsInWorld, postsForWorld } from './modeContent';
-import { useGoMode } from './useGoMode';
+import { useGoTheme } from '../theme/useGoTheme';
 
 const GREEN = '#A8ED8F';
 const PURPLE = '#C891F5';
@@ -68,11 +68,12 @@ function eventRoute(item: DiscoveryItem) {
 function goDiscover(mode: string, query?: string) {
   router.push({ pathname: '/(tabs)/explore', params: { mode, ...(query ? { q: query } : {}) } });
 }
-export function ExperienceCard({ item, width = 238, onSavedChange, dark = false }: {
+export function ExperienceCard({ item, width = 238, onSavedChange, dark = false, palette }: {
   item: DiscoveryItem;
   width?: number;
   onSavedChange?: (id: string, saved: boolean) => void;
   dark?: boolean;
+  palette?: { surface: string; border: string; text: string; muted: string };
 }) {
   const [saving, setSaving] = useState(false);
   const { session } = useAuth();
@@ -91,7 +92,7 @@ export function ExperienceCard({ item, width = 238, onSavedChange, dark = false 
     } finally { setSaving(false); }
   }
   return <Pressable accessibilityRole="button" accessibilityLabel={`Open ${item.title}`}
-    onPress={() => eventRoute(item)} style={[styles.eventCard, dark && styles.nightEventCard, { width }]}>
+    onPress={() => eventRoute(item)} style={[styles.eventCard, dark && styles.nightEventCard, { width, backgroundColor: palette?.surface, borderColor: palette?.border }]}>
     <ImageBackground source={item.image ? { uri: item.image } : item.source === 'demo' ? DEFAULT_NIGHT : item.mode === 'nature' ? DEFAULT_NATURE : DEFAULT_NIGHT}
       style={styles.eventImage} imageStyle={styles.eventImageRadius}>
       <View style={styles.eventTag}><Text style={[styles.tagText, { color: accent }]}>{item.mode === 'night' ? 'NIGHTS' : 'NATURE'}</Text></View>
@@ -101,11 +102,11 @@ export function ExperienceCard({ item, width = 238, onSavedChange, dark = false 
         style={styles.saveBadge}><AppIcon name={item.saved ? 'bookmark' : 'bookmark'} color={item.saved ? '#D7B45A' : '#FFFFFF'} size={18}/></Pressable> : null}
     </ImageBackground>
     <View style={styles.eventCopy}>
-      <Text style={[styles.eventTitle, dark && styles.nightHeading]} numberOfLines={2}>{item.title}</Text>
-      <Text style={[styles.eventMeta, dark && styles.nightMutedText]} numberOfLines={1}>{item.city}{item.state ? `, ${item.state}` : ''} · {dateLabel(item.startsAt)}</Text>
+      <Text style={[styles.eventTitle, { color: palette?.text ?? (dark ? '#F4EFF8' : '#1E362A') }]} numberOfLines={2}>{item.title}</Text>
+      <Text style={[styles.eventMeta, { color: palette?.muted ?? (dark ? '#C9C3D5' : MUTED) }]} numberOfLines={1}>{item.city}{item.state ? `, ${item.state}` : ''} · {dateLabel(item.startsAt)}</Text>
       <View style={styles.eventBottom}>
-        <Text style={[styles.eventCategory, dark && styles.nightMutedText]} numberOfLines={1}>{item.category}</Text>
-        <Text style={[styles.eventPrice, dark && styles.nightHeading]}>{item.priceLabel}</Text>
+        <Text style={[styles.eventCategory, { color: palette?.muted ?? (dark ? '#C9C3D5' : MUTED) }]} numberOfLines={1}>{item.category}</Text>
+        <Text style={[styles.eventPrice, { color: palette?.text ?? (dark ? '#F4EFF8' : INK) }]}>{item.priceLabel}</Text>
       </View>
     </View>
   </Pressable>;
@@ -178,7 +179,7 @@ function validSections(value: unknown): HomeSection[] {
 
 export default function GoHome() {
   const { session } = useAuth();
-  const { mode, chooseMode } = useGoMode(session?.user.id);
+  const { mode, chooseMode, appearance, preference, chooseAppearance, isDark, palette } = useGoTheme(session?.user.id);
   const { width } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const [items, setItems] = useState<DiscoveryItem[]>([]);
@@ -201,8 +202,8 @@ export default function GoHome() {
   const [sections, setSections] = useState<HomeSection[]>(HOME_SECTIONS);
   const [now, setNow] = useState(() => Date.now());
   const isNight = mode === 'night';
-  const accent = isNight ? '#E0B7EF' : '#274937';
-  const primary = isNight ? '#E6D8F2' : '#244B39';
+  const accent = palette.accent;
+  const primary = palette.icon;
   const cardWidth = Math.min(width * 0.66, 270);
 
   useEffect(() => {
@@ -368,14 +369,14 @@ export default function GoHome() {
     if (section === 'circle') return <View key="circle" style={styles.sectionBlock}>
       <View style={styles.sectionHeader}>
         <View style={styles.sectionLabelStack}>
-          <Text style={[styles.overlineGold, isNight && styles.nightAccent]}>{mode === 'nature' ? 'OUTDOOR COMMUNITY' : 'CITY COMMUNITY'}</Text>
-          <Text style={[styles.sectionTitle, isNight && styles.nightHeading]}>{mode === 'nature' ? 'From your outdoor circle' : 'From your city circle'}</Text>
+          <Text style={[styles.overlineGold, { color: palette.accent }]}>{mode === 'nature' ? 'OUTDOOR COMMUNITY' : 'CITY COMMUNITY'}</Text>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>{mode === 'nature' ? 'From your outdoor circle' : 'From your city circle'}</Text>
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel="See all community activity" onPress={() => router.push('/communities')}>
-          <Text style={[styles.seeAll, isNight && styles.nightAccent]}>See all →</Text>
+          <Text style={[styles.seeAll, { color: palette.accent }]}>See all →</Text>
         </Pressable>
       </View>
-      {modePosts.length ? modePosts.map(post => <Pressable key={post.id} accessibilityRole="button" style={[styles.pulseCard, isNight && styles.nightPanel]}
+      {modePosts.length ? modePosts.map(post => <Pressable key={post.id} accessibilityRole="button" style={[styles.pulseCard, { backgroundColor: palette.surface, borderColor: palette.border }]}
         accessibilityLabel={`Community update from ${post.author_name || 'a member'}`}
         onPress={() => post.group_id ? router.push({ pathname: '/groups/[id]', params: { id: post.group_id } }) : router.push('/communities')}>
         {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.pulsePhoto}
@@ -385,55 +386,55 @@ export default function GoHome() {
             {post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.pulseAvatar}/> :
               <View style={styles.pulseInitial}><Text style={styles.pulseInitialText}>{(post.author_name || 'M').slice(0, 1).toUpperCase()}</Text></View>}
             <View style={styles.flex}>
-              <Text style={[styles.pulseAuthor, isNight && styles.nightHeading]} numberOfLines={1}>{post.author_name || 'Community member'}</Text>
-              <Text style={[styles.pulseMeta, isNight && styles.nightMutedText]} numberOfLines={1}>
+              <Text style={[styles.pulseAuthor, { color: palette.text }]} numberOfLines={1}>{post.author_name || 'Community member'}</Text>
+              <Text style={[styles.pulseMeta, { color: palette.muted }]} numberOfLines={1}>
                 {(post.group_id ? groupById.get(post.group_id) : null) || 'GO Melanated'} · {relativeDate(post.created_at)}
               </Text>
             </View>
           </View>
-          <Text style={[styles.pulseBody, isNight && styles.nightMutedText]} numberOfLines={post.image_url ? 3 : 2}>
+          <Text style={[styles.pulseBody, { color: palette.text }]} numberOfLines={post.image_url ? 3 : 2}>
             {post.body || (post.post_type === 'photo' ? 'Shared a moment with the community.' : 'Shared an update.')}
           </Text>
-          {post.image_url && <Text style={[styles.pulseExplore, isNight && styles.nightAccent]}>View story →</Text>}
+          {post.image_url && <Text style={[styles.pulseExplore, { color: palette.accent }]}>View story →</Text>}
         </View>
         {!post.image_url && <AppIcon name="chevron-forward" color={MUTED} size={17}/>}
-      </Pressable>) : <Pressable accessibilityRole="button" style={[styles.pulseEmpty, isNight && styles.nightPanel]} onPress={() => router.push('/communities')}>
+      </Pressable>) : <Pressable accessibilityRole="button" style={[styles.pulseEmpty, { backgroundColor: palette.surface }]} onPress={() => router.push('/communities')}>
         <View style={styles.pulseIcon}><AppIcon name="photos" color={primary} size={24}/></View>
-        <View style={styles.flex}><Text style={[styles.pulseAuthor, isNight && styles.nightHeading]}>{mode === 'nature' ? 'Find your people outside' : 'Your city circle starts here'}</Text>
-          <Text style={[styles.pulseBody, isNight && styles.nightMutedText]}>{mode === 'nature' ? 'See outdoor stories and communities.' : 'Join a city-focused community to see its activity here.'}</Text></View>
+        <View style={styles.flex}><Text style={[styles.pulseAuthor, { color: palette.text }]}>{mode === 'nature' ? 'Find your people outside' : 'Your city circle starts here'}</Text>
+          <Text style={[styles.pulseBody, { color: palette.text }]}>{mode === 'nature' ? 'See outdoor stories and communities.' : 'Join a city-focused community to see its activity here.'}</Text></View>
         <AppIcon name="chevron-forward" color={MUTED} size={18}/>
       </Pressable>}
     </View>;
     if (section === 'trail' && mode === 'night') return <View key="trail" style={styles.sectionBlock}>
       <View style={styles.sectionHeader}>
         <View style={styles.sectionLabelStack}>
-          <Text style={[styles.overlineGold, styles.nightAccent]}>YOUR CITY LIFE</Text>
-          <Text style={[styles.sectionTitle, isNight && styles.nightHeading]}>Your nights out</Text>
+          <Text style={[styles.overlineGold, { color: palette.accent }]}>YOUR CITY LIFE</Text>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Your nights out</Text>
         </View>
         <Pressable accessibilityRole="button" onPress={() => goDiscover('night')}>
-          <Text style={[styles.seeAll, isNight && styles.nightAccent]}>City events →</Text>
+          <Text style={[styles.seeAll, { color: palette.accent }]}>City events →</Text>
         </Pressable>
       </View>
       {upcomingRsvps.length ? upcomingRsvps.slice(0, 3).map(event =>
-        <Pressable key={event.id} style={[styles.cityPlanCard, isNight && styles.nightPanel]} accessibilityRole="button"
+        <Pressable key={event.id} style={[styles.cityPlanCard, { backgroundColor: palette.surface }]} accessibilityRole="button"
           accessibilityLabel={'Open upcoming city outing ' + event.title}
           onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}>
           {event.image_url ? <Image source={{ uri: event.image_url }} style={styles.cityPlanImage}/> :
             <View style={styles.cityPlanIcon}><AppIcon name="calendar" color="#68438F" size={23}/></View>}
           <View style={styles.flex}>
             <Text style={styles.cityPlanLabel}>YOU&apos;RE GOING · {dateLabel(event.starts_at)}</Text>
-            <Text style={[styles.cityPlanTitle, isNight && styles.nightHeading]} numberOfLines={1}>{event.title}</Text>
-            <Text style={[styles.cityPlanMeta, isNight && styles.nightMutedText]} numberOfLines={1}>{event.city}, {event.state}</Text>
+            <Text style={[styles.cityPlanTitle, { color: palette.text }]} numberOfLines={1}>{event.title}</Text>
+            <Text style={[styles.cityPlanMeta, { color: palette.muted }]} numberOfLines={1}>{event.city}, {event.state}</Text>
           </View>
           <AppIcon name="chevron-forward" color="#77588B" size={19}/>
         </Pressable>) :
-        <Pressable accessibilityRole="button" style={[styles.cityEmpty, isNight && styles.nightPanel]}
+        <Pressable accessibilityRole="button" style={[styles.cityEmpty, { backgroundColor: palette.surface }]}
           onPress={() => goDiscover('night')}>
           <AppIcon name="calendar" color="#7B54A1" size={27}/>
           <View style={styles.flex}>
-            <Text style={[styles.cityPlanTitle, isNight && styles.nightHeading]}>No city outings on your calendar yet</Text>
-            <Text style={[styles.cityPlanMeta, isNight && styles.nightMutedText]}>Find music, food, art, and social experiences.</Text>
-            <Text style={[styles.cityPlanLink, isNight && styles.nightAccent]}>Explore Night experiences →</Text>
+            <Text style={[styles.cityPlanTitle, { color: palette.text }]}>No city outings on your calendar yet</Text>
+            <Text style={[styles.cityPlanMeta, { color: palette.muted }]}>Find music, food, art, and social experiences.</Text>
+            <Text style={[styles.cityPlanLink, { color: palette.accent }]}>Explore Night experiences →</Text>
           </View>
         </Pressable>}
       <Pressable accessibilityRole="button" style={styles.universalLink}
@@ -448,8 +449,8 @@ export default function GoHome() {
       const nextLabel = nextMilestone ? `${nextMilestone - journey.length} more to your next chapter` : 'Your story keeps growing';
       return <View key="trail" style={styles.sectionBlock}>
         <View style={styles.sectionLabelStack}>
-          <Text style={[styles.overlineGold, isNight && styles.nightAccent]}>YOUR OUTDOOR LIFE, REMEMBERED</Text>
-          <Text style={[styles.sectionTitle, isNight && styles.nightHeading]}>{mode === 'nature' ? 'A story worth keeping' : 'The moments you made'}</Text>
+          <Text style={[styles.overlineGold, { color: palette.accent }]}>YOUR OUTDOOR LIFE, REMEMBERED</Text>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>{mode === 'nature' ? 'A story worth keeping' : 'The moments you made'}</Text>
         </View>
         <Pressable style={styles.journeySpotlight} accessibilityRole="button" accessibilityLabel="Open Your Trail"
           onPress={() => router.push('/member/journey')}>
@@ -478,15 +479,15 @@ export default function GoHome() {
       </View>;
     }
     return <View key="picks" style={styles.sectionBlock}>
-      <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, isNight && styles.nightHeading]}>{mode === 'nature' ? 'Explore the outdoors' : 'Around town'}</Text>
-        <Pressable accessibilityRole="button" onPress={() => goDiscover(mode)}><Text style={[styles.seeAll, isNight && styles.nightAccent]}>Discover →</Text></Pressable>
+      <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: palette.text }]}>{mode === 'nature' ? 'Explore the outdoors' : 'Around town'}</Text>
+        <Pressable accessibilityRole="button" onPress={() => goDiscover(mode)}><Text style={[styles.seeAll, { color: palette.accent }]}>Discover →</Text></Pressable>
       </View>
-      <Text style={[styles.sectionIntro, isNight && styles.nightMutedText]}>{savedCategories.size
+      <Text style={[styles.sectionIntro, { color: palette.muted }]}>{savedCategories.size
         ? (mode === 'nature' ? 'Outdoor ideas based on your saved experiences.' : 'City experiences based on your saved interests.')
         : (mode === 'nature' ? 'Outdoor adventures to make your own.' : 'Food, music, culture, and local gatherings.') }</Text>
-      <View style={[styles.moodPanel, isNight && styles.nightPanel]}>
+      <View style={[styles.moodPanel, { backgroundColor: palette.surface, borderColor: palette.border }]}>
         <View style={styles.moodHead}><AppIcon name="sparkles" color={primary} size={20}/>
-          <Text style={[styles.moodTitle, isNight && styles.nightHeading]}>What sounds good today?</Text></View>
+          <Text style={[styles.moodTitle, { color: palette.text }]}>What sounds good today?</Text></View>
         <View style={styles.moodRow}>{modeMoodOptions.map(option =>
           <Pressable key={option.id} accessibilityRole="button" accessibilityState={{ selected: mood === option.id }}
             onPress={() => {
@@ -494,16 +495,16 @@ export default function GoHome() {
               setMood(chosen);
               if (session?.user.id) void Storage.setItem('go-home-mood:v1:' + session.user.id + ':' + mode, chosen ?? '').catch(() => {});
             }}
-            style={[styles.moodChip, isNight && styles.nightMoodChip, mood === option.id && { borderColor: isNight ? '#CCB1DC' : primary, backgroundColor: isNight ? '#625477' : '#C7D9C3' }]}>
-            <Text style={[styles.moodChipText, isNight && styles.nightHeading]}>{option.icon + ' ' + option.label}</Text>
+            style={[styles.moodChip, { backgroundColor: palette.chip, borderColor: palette.border }, mood === option.id && { borderColor: palette.accent, backgroundColor: palette.elevated }]}>
+            <Text style={[styles.moodChipText, { color: palette.text }]}>{option.icon + ' ' + option.label}</Text>
           </Pressable>)}</View>
       </View>
       {!!suggestions.length && <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cards}>
-        {suggestions.map(item => <ExperienceCard key={item.source + ':' + item.id} item={item} width={cardWidth} dark={isNight} onSavedChange={updateSaved}/>)}
+        {suggestions.map(item => <ExperienceCard key={item.source + ':' + item.id} item={item} width={cardWidth} dark={isDark} palette={palette} onSavedChange={updateSaved}/>)}
       </ScrollView>}
-      {!suggestions.length && <Pressable style={[styles.empty, isNight && styles.nightPanel]} onPress={() => goDiscover(mode, mood ? modeMoodOptions.find(value => value.id === mood)?.search : undefined)}>
-        <Text style={[styles.emptyTitle, isNight && styles.nightHeading]}>Nothing matching that mood is listed yet.</Text>
-        <Text style={[styles.muted, isNight && styles.nightMutedText]}>Browse more experiences in Discover →</Text>
+      {!suggestions.length && <Pressable style={[styles.empty, { backgroundColor: palette.surface }]} onPress={() => goDiscover(mode, mood ? modeMoodOptions.find(value => value.id === mood)?.search : undefined)}>
+        <Text style={[styles.emptyTitle, { color: palette.text }]}>Nothing matching that mood is listed yet.</Text>
+        <Text style={[styles.muted, { color: palette.muted }]}>Browse more experiences in Discover →</Text>
       </Pressable>}
       <Pressable style={styles.editorial} accessibilityRole="button" onPress={() => router.push(mode === 'nature' ? '/trail-guide' : '/communities')}>
         <ImageBackground source={mode === 'nature' ? DEFAULT_NATURE : DEFAULT_NIGHT} imageStyle={styles.editorialImage} style={styles.editorialBackground}>
@@ -526,36 +527,50 @@ export default function GoHome() {
     : actionTrip
       ? (isLive ? 'Happening now · ' : dateLabel(actionTrip.starts_at) + ' · ') + actionTrip.city + ', ' + actionTrip.state
       : mode === 'nature' ? 'Find a hike, a campsite, or a community adventure.' : 'Discover music, culture, food, and your city community.';
-  return <ScrollView ref={scrollRef} style={[styles.screen, isNight && styles.nightScreen]}
+  return <ScrollView ref={scrollRef} style={[styles.screen, { backgroundColor: palette.background }]}
     contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={primary}/>}>
     <View style={styles.brandBar}>
-      <Text style={[styles.eyebrow, isNight && styles.nightAccent]}>GO MELANATED · YOUR TRAILHEAD</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="Your profile" onPress={() => router.push('/member/profile')} style={[styles.profileButton, isNight && styles.nightProfileButton]}>
-        <AppIcon name="profile" color={isNight ? '#F1E8F6' : INK} size={21}/>
+      <Text style={[styles.eyebrow, { color: palette.accent }]}>GO MELANATED · YOUR TRAILHEAD</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Your profile" onPress={() => router.push('/member/profile')} style={[styles.profileButton, { backgroundColor: palette.elevated }]}>
+        <AppIcon name="profile" color={palette.text} size={21}/>
       </Pressable>
     </View>
-    <View style={[styles.switcher, isNight && styles.nightSwitcher]}>{(['nature', 'night'] as const).map(value =>
+    <View style={[styles.switcher, { backgroundColor: palette.elevated }]}>{(['nature', 'night'] as const).map(value =>
       <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: mode === value }}
         onPress={() => switchMode(value)}
-        style={[styles.modeButton, mode === value && { backgroundColor: value === 'nature' ? '#DDE7D8' : '#625675' }]}>
-        <Text style={[styles.modeText, isNight && styles.nightMutedText, mode === value && styles.modeTextActive, mode === value && isNight && styles.nightHeading]}>{value === 'nature' ? '🌿  Nature' : '🌆  Nights'}</Text>
+        style={[styles.modeButton, mode === value && { backgroundColor: palette.surface }]}>
+        <Text style={[styles.modeText, mode === value && styles.modeTextActive, { color: mode === value ? palette.text : palette.muted }]}>{value === 'nature' ? '🌿  Nature' : '🌆  Nights'}</Text>
       </Pressable>)}</View>
+    <View style={styles.appearanceRow}>
+      <Text style={[styles.appearanceLabel, { color: palette.text }]}>APPEARANCE · {appearance === 'day' ? 'DAY' : 'DARK'}</Text>
+      <View style={[styles.appearanceChoices, { backgroundColor: palette.elevated }]}>
+        {(['auto', 'day', 'dark'] as const).map(value =>
+          <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: preference === value }}
+            accessibilityLabel={value === 'auto' ? 'Automatic appearance based on local time' : value === 'day' ? 'Day appearance' : 'Dark appearance'}
+            style={[styles.appearanceChoice, preference === value && { backgroundColor: palette.surface, borderColor: palette.border }]}
+            onPress={() => chooseAppearance(value)}>
+            <Text style={[styles.appearanceChoiceText, { color: preference === value ? palette.text : palette.muted }]}>
+              {value === 'auto' ? 'Auto' : value === 'day' ? 'Day' : 'Dark'}
+            </Text>
+          </Pressable>)}
+      </View>
+    </View>
     {sceneInitialized ?
       <GoTrailheadScene displayName={memberName} greeting={greetingFor(new Date(now).getHours())}
         rank={effectiveRank} badges={memberBadges} weather={localWeather}
         homeCity={profile.city} homeState={profile.state}
-        nightImage={nightPhoto} mode={mode}/> :
-      <View style={[styles.scenePlaceholder, { backgroundColor: isNight ? '#30304B' : '#5F7968' }]}>
+        nightImage={nightPhoto} mode={mode} appearance={appearance}/> :
+      <View style={[styles.scenePlaceholder, { backgroundColor: palette.elevated }]}>
         <ActivityIndicator color={accent}/>
         <Text style={styles.sceneLoadingText}>Preparing your Trailhead...</Text>
       </View>}
-    <Pressable accessibilityRole="button" style={[styles.nextAdventure, isNight && styles.nightPanel]}
+    <Pressable accessibilityRole="button" style={[styles.nextAdventure, { backgroundColor: palette.surface, borderColor: palette.border }]}
       onPress={() => actionOuting ? router.push({ pathname: '/local-events/[id]', params: { id: actionOuting.id } }) : actionTrip ? router.push({ pathname: '/adventures/[id]', params: { id: actionTrip.id } }) : goDiscover(mode)}>
-      <View style={[styles.nextIcon, isNight && styles.nightIconSurface]}><AppIcon name={isLive ? 'map' : hasBooking ? 'calendar' : 'explore'} color={primary} size={21}/></View>
+      <View style={[styles.nextIcon, { backgroundColor: palette.elevated }]}><AppIcon name={isLive ? 'map' : hasBooking ? 'calendar' : 'explore'} color={primary} size={21}/></View>
       <View style={styles.flex}>
-        <Text style={[styles.nextEyebrow, isNight && styles.nightAccent]}>{isLive ? 'HAPPENING NOW' : actionOuting ? 'CITY OUTING · GOING' : hasBooking ? isPending ? 'YOUR RESERVATION' : 'NEXT UP' : mode === 'nature' ? 'OUTDOOR PLANS' : 'CITY PLANS'}</Text>
-        <Text style={[styles.nextTitle, isNight && styles.nightHeading]} numberOfLines={1}>{hasBooking ? heroHeading : mode === 'nature' ? 'Find your next outdoor adventure' : 'See what is happening in your city'}</Text>
-        <Text style={[styles.nextMeta, isNight && styles.nightMutedText]} numberOfLines={1}>{heroDescription}</Text>
+        <Text style={[styles.nextEyebrow, { color: palette.accent }]}>{isLive ? 'HAPPENING NOW' : actionOuting ? 'CITY OUTING · GOING' : hasBooking ? isPending ? 'YOUR RESERVATION' : 'NEXT UP' : mode === 'nature' ? 'OUTDOOR PLANS' : 'CITY PLANS'}</Text>
+        <Text style={[styles.nextTitle, { color: palette.text }]} numberOfLines={1}>{hasBooking ? heroHeading : mode === 'nature' ? 'Find your next outdoor adventure' : 'See what is happening in your city'}</Text>
+        <Text style={[styles.nextMeta, { color: palette.muted }]} numberOfLines={1}>{heroDescription}</Text>
       </View>
       <AppIcon name="chevron-forward" size={21} color={primary}/>
     </Pressable>
@@ -572,15 +587,15 @@ export default function GoHome() {
       </View>}
     {loading && <ActivityIndicator color={primary} style={styles.loading}/>}
     {error && <Text style={styles.error}>{error}</Text>}
-    <View style={styles.personalizeRow}><Text style={[styles.homeLabel, isNight && styles.nightAccent]}>YOUR WORLD</Text>
+    <View style={styles.personalizeRow}><Text style={[styles.homeLabel, { color: palette.text }]}>YOUR WORLD</Text>
       <Pressable accessibilityRole="button" accessibilityLabel={editing ? 'Done editing home' : 'Customize home'}
         onPress={() => setEditing(current => !current)} style={styles.editButton}>
         <AppIcon name={editing ? 'check' : 'settings'} color={primary} size={15}/>
-        <Text style={[styles.editText, isNight && styles.nightAccent]}>{editing ? 'Done' : 'Customize'}</Text>
+        <Text style={[styles.editText, { color: palette.accent }]}>{editing ? 'Done' : 'Customize'}</Text>
       </Pressable>
     </View>
     <View style={styles.worldActions}>
-      <Pressable accessibilityRole="button" style={[styles.worldAction, isNight && styles.nightAction]}
+      <Pressable accessibilityRole="button" style={[styles.worldAction, { backgroundColor: palette.elevated }]}
         onPress={() => mode === 'nature' ? router.push('/trail-guide') : goDiscover('night')}>
         <AppIcon name={mode === 'nature' ? 'guide' : 'explore'} color={primary} size={19}/>
         <Text style={[styles.worldActionText, { color: primary }]}>{mode === 'nature' ? 'Trail Guide' : 'Explore Night'}</Text>
@@ -593,7 +608,7 @@ export default function GoHome() {
     </View>
     <View style={styles.quickTiles}>
       <Pressable accessibilityRole="button" accessibilityLabel="Your Circle. Open your communities"
-        style={[styles.quickTile, styles.quickCircle, isNight && styles.nightQuickCircle]} onPress={() => router.push('/communities')}>
+        style={[styles.quickTile, styles.quickCircle, { backgroundColor: isNight ? '#35314D' : isDark ? '#1D382B' : '#163F2B' }]} onPress={() => router.push('/communities')}>
         {circlePhoto ? <Image source={{ uri: circlePhoto }} resizeMode="cover" style={styles.quickTilePhoto}/> : <ContourLines light/>}
         {circlePhoto && <PhotoShade id="goHomeCircle" night={isNight} gentle/>}
         <View style={styles.quickTileInner}>
@@ -618,7 +633,7 @@ export default function GoHome() {
         </View>
       </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel={mode === 'nature' ? 'Your Trail. Open your adventure memories' : 'Your city plans'}
-        style={[styles.quickTile, styles.quickTrail, isNight && styles.nightQuickTrail]} onPress={() => mode === 'nature' ? router.push('/member/journey')
+        style={[styles.quickTile, styles.quickTrail, { backgroundColor: isNight ? '#47415E' : isDark ? '#25402E' : '#DEE5D8' }]} onPress={() => mode === 'nature' ? router.push('/member/journey')
           : nextRsvp ? router.push({ pathname: '/local-events/[id]', params: { id: nextRsvp.id } })
           : modeTrips.some(trip => activeBooking(trip, now)) ? router.push('/member/trips') : goDiscover('night')}>
         {quickStoryPhoto ? <Image source={{ uri: quickStoryPhoto }} resizeMode="cover" style={styles.quickTilePhoto}/> : <ContourLines light={isNight}/>} 
@@ -626,16 +641,16 @@ export default function GoHome() {
         <View style={styles.quickTileInner}>
           <View style={styles.quickTop}>
             <AppIcon name={mode === 'nature' ? 'stamp' : 'calendar'} color={quickStoryPhoto || isNight ? '#EBD6F5' : '#4E6F50'} size={23}/>
-            <Text style={[styles.quickOverline, !quickStoryPhoto && !isNight && styles.quickTrailOverline]}>{mode === 'nature' ? 'YOUR STORY' : 'YOUR CITY LIFE'}</Text>
+            <Text style={[styles.quickOverline, !quickStoryPhoto && !isNight && !isDark && styles.quickTrailOverline]}>{mode === 'nature' ? 'YOUR STORY' : 'YOUR CITY LIFE'}</Text>
           </View>
           <View>
-            <Text style={[styles.quickTileTitle, !quickStoryPhoto && !isNight && styles.quickTrailTitle]}>{mode === 'nature' ? 'Your Trail' : 'City Plans'}</Text>
-            <Text style={[styles.quickTileCopy, !quickStoryPhoto && !isNight && styles.quickTrailCopy]}>
+            <Text style={[styles.quickTileTitle, !quickStoryPhoto && !isNight && !isDark && styles.quickTrailTitle]}>{mode === 'nature' ? 'Your Trail' : 'City Plans'}</Text>
+            <Text style={[styles.quickTileCopy, !quickStoryPhoto && !isNight && !isDark && styles.quickTrailCopy]}>
               {mode === 'night' ? upcomingRsvps.length + modeTrips.filter(trip => activeBooking(trip, now)).length + ' upcoming plans' : session && journey.length ? journey.length + (journey.length === 1 ? ' adventure remembered' : ' adventures remembered') : 'Your first chapter awaits'}
             </Text>
           </View>
           <View style={styles.quickBottom}>
-            <Text style={[styles.quickMilestone, !quickStoryPhoto && !isNight && styles.quickTrailMilestone]}>
+            <Text style={[styles.quickMilestone, !quickStoryPhoto && !isNight && !isDark && styles.quickTrailMilestone]}>
               {mode === 'night' ? (nextRsvp ? dateLabel(nextRsvp.starts_at) + ' · ' + nextRsvp.city : 'Find your next city experience') : nextMilestone && journey.length ? nextMilestone - journey.length + ' to your next milestone' : 'Your outdoor life, remembered'}
             </Text>
             <AppIcon name="chevron-forward" color={quickStoryPhoto || isNight ? '#EBD6F5' : '#405C45'} size={16}/>
@@ -643,14 +658,14 @@ export default function GoHome() {
         </View>
       </Pressable>
     </View>
-    {editing && <View style={[styles.editor, isNight && styles.nightPanel]}>
-      <Text style={[styles.editorTitle, isNight && styles.nightHeading]}>Make this space yours</Text>
-      <Text style={[styles.editorHint, isNight && styles.nightMutedText]}>Show, hide, or move sections. Your choice is saved on this device for this mode.</Text>
-      {HOME_SECTIONS.map(value => <View key={value} style={[styles.editorRow, isNight && styles.nightRow]}>
+    {editing && <View style={[styles.editor, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+      <Text style={[styles.editorTitle, { color: palette.text }]}>Make this space yours</Text>
+      <Text style={[styles.editorHint, { color: palette.muted }]}>Show, hide, or move sections. Your choice is saved on this device for this mode.</Text>
+      {HOME_SECTIONS.map(value => <View key={value} style={[styles.editorRow, { borderTopColor: palette.border }]}>
         <Pressable accessibilityRole="button" accessibilityState={{ checked: sections.includes(value) }}
           style={styles.editorCheck} onPress={() => toggleSection(value)}>
           <AppIcon name={sections.includes(value) ? 'check' : 'add'} color={primary} size={21}/>
-          <Text style={[styles.editorName, isNight && styles.nightHeading]}>{value === 'circle' ? 'Your circle' : value === 'trail' ? 'Your story' : 'Inspiration'}</Text>
+          <Text style={[styles.editorName, { color: palette.text }]}>{value === 'circle' ? 'Your circle' : value === 'trail' ? 'Your story' : 'Inspiration'}</Text>
         </Pressable>
         {sections.includes(value) && <View style={styles.editorArrows}>
           <Pressable accessibilityRole="button" accessibilityLabel={'Move ' + value + ' up'} disabled={sections.indexOf(value) === 0} onPress={() => moveSection(value, -1)} style={styles.arrowTap}><AppIcon name="arrow-up" color={sections.indexOf(value) === 0 ? '#9BA6A0' : primary} size={20}/></Pressable>
@@ -658,16 +673,16 @@ export default function GoHome() {
         </View>}
       </View>)}
       <Pressable accessibilityRole="button" onPress={() => setHomeSections(HOME_SECTIONS)}>
-        <Text style={[styles.reset, isNight && styles.nightAccent]}>Reset home layout</Text>
+        <Text style={[styles.reset, { color: palette.accent }]}>Reset home layout</Text>
       </Pressable>
     </View>}
     {sections.map(sectionContent)}
-    <Pressable style={[styles.crossCard, isNight && styles.nightPanel]} accessibilityRole="button" onPress={() => switchMode(mode === 'nature' ? 'night' : 'nature')}>
+    <Pressable style={[styles.crossCard, { backgroundColor: palette.surface, borderColor: palette.border }]} accessibilityRole="button" onPress={() => switchMode(mode === 'nature' ? 'night' : 'nature')}>
       <View style={styles.flex}>
-        <Text style={[styles.crossKicker, isNight && styles.nightAccent]}>THERE&apos;S MORE TO YOUR WORLD</Text>
-        <Text style={[styles.crossTitle, isNight && styles.nightHeading]}>{mode === 'nature' ? 'A little city adventure?' : 'Take the scenic route.'}</Text>
-        <Text style={[styles.muted, isNight && styles.nightMutedText]}>{mode === 'nature' ? 'Discover brunches, markets, arts, food, and city experiences all day.' : 'See what is waiting beyond the pavement.'}</Text>
-        <Text style={[styles.crossAction, isNight && styles.nightAccent]}>Switch to {mode === 'nature' ? 'Nights' : 'Nature'}  →</Text>
+        <Text style={[styles.crossKicker, { color: palette.accent }]}>THERE&apos;S MORE TO YOUR WORLD</Text>
+        <Text style={[styles.crossTitle, { color: palette.text }]}>{mode === 'nature' ? 'A little city adventure?' : 'Take the scenic route.'}</Text>
+        <Text style={[styles.muted, { color: palette.muted }]}>{mode === 'nature' ? 'Discover brunches, markets, arts, food, and city experiences all day.' : 'See what is waiting beyond the pavement.'}</Text>
+        <Text style={[styles.crossAction, { color: palette.accent }]}>Switch to {mode === 'nature' ? 'Nights' : 'Nature'}  →</Text>
       </View>
     </Pressable>
     <View style={styles.bottomSpace}/>
@@ -676,6 +691,11 @@ export default function GoHome() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#94A993' },
+  appearanceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: -4, marginBottom: 10, minHeight: 36, gap: 10 },
+  appearanceLabel: { fontSize: 9, fontWeight: '900', letterSpacing: 0.9 },
+  appearanceChoices: { flexDirection: 'row', borderRadius: 12, padding: 3, gap: 2 },
+  appearanceChoice: { paddingHorizontal: 12, minHeight: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: 1, borderColor: 'transparent' },
+  appearanceChoiceText: { fontSize: 11, fontWeight: '800' },
   nightScreen: { backgroundColor: '#25273D' },
   nightPanel: { backgroundColor: '#35364F', borderColor: '#56516B' },
   nightHeading: { color: '#F4EFF8' },

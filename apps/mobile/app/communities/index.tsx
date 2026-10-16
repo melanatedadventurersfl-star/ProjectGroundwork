@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getGroups, joinGroup, type CommunityGroup } from '../../src/community/api';
 import { useAuth } from '../../src/auth/AuthProvider';
 import { belongsInWorld } from '../../src/discovery/modeContent';
-import { useGoMode } from '../../src/discovery/useGoMode';
+import { useGoTheme } from '../../src/theme/useGoTheme';
 import { communityOwnershipLabel, isPeopleCommunity } from '../../src/community/communityModel';
 import { getMemberBasecamp } from '../../src/member/api';
 
@@ -34,24 +34,24 @@ function nearby(group: CommunityGroup, city: string | null, state: string | null
   return normalize(group.city) === normalize(city) && (!leftState || !rightState || leftState === rightState);
 }
 
-function CommunityCard({ group, joining, reason, onJoin }: { group: CommunityGroup; joining: boolean; reason?: string; onJoin: (group: CommunityGroup) => void }) {
+function CommunityCard({ group, joining, reason, onJoin, palette }: { group: CommunityGroup; joining: boolean; reason?: string; onJoin: (group: CommunityGroup) => void; palette: { surface: string; text: string; muted: string; border: string; accent: string; elevated: string } }) {
   const image = group.cover_image_url || group.image_url;
   return (
-    <Pressable style={({ pressed }) => [styles.card, pressed && styles.pressed]} onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}>
+    <Pressable style={({ pressed }) => [styles.card, { backgroundColor: palette.surface, borderColor: palette.border }, pressed && styles.pressed]} onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}>
       <View style={styles.imageWrap}>{image ? <Image source={{ uri: image }} style={styles.image} /> : <Text style={styles.initials}>{initials(group.name)}</Text>}</View>
       <View style={styles.cardCopy}>
-        <Text style={styles.name} numberOfLines={1}>{group.name}</Text>
-        <Text style={styles.owner} numberOfLines={1}>{communityOwnershipLabel(group)}</Text>
-        {reason ? <Text style={styles.reason} numberOfLines={1}>{reason}</Text> : <Text style={styles.meta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text>}
+        <Text style={[styles.name, { color: palette.text }]} numberOfLines={1}>{group.name}</Text>
+        <Text style={[styles.owner, { color: palette.muted }]} numberOfLines={1}>{communityOwnershipLabel(group)}</Text>
+        {reason ? <Text style={[styles.reason, { color: palette.accent }]} numberOfLines={1}>{reason}</Text> : <Text style={[styles.meta, { color: palette.muted }]}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text>}
       </View>
-      {group.is_member ? <Ionicons name="chevron-forward" size={18} color={GOLD} /> : <View style={styles.joinButton}><Text style={styles.joinText}>{joining ? 'Joining…' : 'Join'}</Text></View>}
+      {group.is_member ? <Ionicons name="chevron-forward" size={18} color={palette.accent} /> : <View style={[styles.joinButton, { backgroundColor: palette.accent }]}><Text style={[styles.joinText, { color: palette.surface }]}>{joining ? 'Joining…' : 'Join'}</Text></View>}
     </Pressable>
   );
 }
 
 export default function CommunitiesScreen() {
   const { session } = useAuth();
-  const { mode, chooseMode } = useGoMode(session?.user.id);
+  const { mode, chooseMode, palette } = useGoTheme(session?.user.id);
   const [showAll, setShowAll] = useState(false);
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
   const [query, setQuery] = useState('');
@@ -97,32 +97,32 @@ export default function CommunitiesScreen() {
   }, [joiningId]);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <Pressable style={styles.backButton} onPress={() => router.back()}><Ionicons name="chevron-back" size={22} color={TEXT} /></Pressable>
-        <View style={styles.flex}><Text style={styles.eyebrow}>OUTPOST</Text><Text style={styles.title}>Communities</Text></View>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: palette.background }]}>
+      <View style={[styles.header, { borderBottomColor: palette.border }]}>
+        <Pressable style={[styles.backButton, { backgroundColor: palette.elevated }]} onPress={() => router.back()}><Ionicons name="chevron-back" size={22} color={palette.text} /></Pressable>
+        <View style={styles.flex}><Text style={[styles.eyebrow, { color: palette.accent }]}>OUTPOST</Text><Text style={[styles.title, { color: palette.text }]}>Communities</Text></View>
       </View>
-      {loading ? <View style={styles.center}><ActivityIndicator color={GOLD} /></View> : <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.searchWrap}><Ionicons name="search" size={18} color={MUTED} /><TextInput value={query} onChangeText={setQuery} placeholder="Search communities" placeholderTextColor="#758078" style={styles.searchInput} /></View>
+      {loading ? <View style={styles.center}><ActivityIndicator color={palette.accent} /></View> : <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={[styles.searchWrap, { backgroundColor: palette.surface, borderColor: palette.border }]}><Ionicons name="search" size={18} color={palette.muted} /><TextInput value={query} onChangeText={setQuery} placeholder="Search communities" placeholderTextColor={palette.muted} style={[styles.searchInput, { color: palette.text }]} /></View>
         <View style={styles.worldChoices}>
           {(['nature', 'night', 'all'] as const).map(value =>
             <Pressable key={value} accessibilityRole="button"
               accessibilityState={{ selected: value === 'all' ? showAll : !showAll && mode === value }}
-              style={[styles.worldChoice, (value === 'all' ? showAll : !showAll && mode === value) && styles.worldChoiceActive]}
+              style={[styles.worldChoice, { backgroundColor: palette.elevated }, (value === 'all' ? showAll : !showAll && mode === value) && { backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.border }]}
               onPress={() => { if (value === 'all') setShowAll(true); else { setShowAll(false); chooseMode(value); } }}>
-              <Text style={[styles.worldChoiceText, (value === 'all' ? showAll : !showAll && mode === value) && styles.worldChoiceTextActive]}>
+              <Text style={[styles.worldChoiceText, { color: palette.text }]}>
                 {value === 'nature' ? '🌿 Nature' : value === 'night' ? '🌙 Night' : 'All'}
               </Text>
             </Pressable>)}
         </View>
 
-        <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{showAll ? 'Your Communities' : mode === 'nature' ? 'Your Outdoor Communities' : 'Your City Communities'}</Text><Text style={styles.sectionCopy}>Joined groups that match this experience.</Text></View>
-        {joined.length ? <View style={styles.list}>{joined.map((group) => <CommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={handleJoin} />)}</View> : <View style={styles.empty}><Ionicons name="people-outline" size={23} color={GREEN} /><Text style={styles.emptyTitle}>{showAll ? 'You haven’t joined a community yet.' : mode === 'nature' ? 'No outdoor communities joined yet.' : 'No city communities joined yet.'}</Text><Text style={styles.emptyCopy}>Browse groups below and join one to see its posts on your Trailhead.</Text></View>}
+        <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: palette.text }]}>{showAll ? 'Your Communities' : mode === 'nature' ? 'Your Outdoor Communities' : 'Your City Communities'}</Text><Text style={[styles.sectionCopy, { color: palette.muted }]}>Joined groups that match this experience.</Text></View>
+        {joined.length ? <View style={styles.list}>{joined.map((group) => <CommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={handleJoin} palette={palette} />)}</View> : <View style={[styles.empty, { backgroundColor: palette.surface }]}><Ionicons name="people-outline" size={23} color={GREEN} /><Text style={[styles.emptyTitle, { color: palette.text }]}>{showAll ? 'You haven’t joined a community yet.' : mode === 'nature' ? 'No outdoor communities joined yet.' : 'No city communities joined yet.'}</Text><Text style={[styles.emptyCopy, { color: palette.muted }]}>Browse groups below and join one to see its posts on your Trailhead.</Text></View>}
 
-        {!query.trim() ? <><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Recommended for You</Text><Text style={styles.sectionCopy}>Nearby groups and active communities appear first.</Text></View><View style={styles.list}>{recommended.length ? recommended.map((group) => <CommunityCard key={group.id} group={group} joining={joiningId === group.id} reason={nearby(group, homeCity, homeState) && homeCity ? `Near ${homeCity}` : `${group.member_count} members`} onJoin={handleJoin} />) : <Text style={styles.muted}>No additional communities are available right now.</Text>}</View></> : null}
+        {!query.trim() ? <><View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: palette.text }]}>Recommended for You</Text><Text style={[styles.sectionCopy, { color: palette.muted }]}>Nearby groups and active communities appear first.</Text></View><View style={styles.list}>{recommended.length ? recommended.map((group) => <CommunityCard key={group.id} group={group} joining={joiningId === group.id} reason={nearby(group, homeCity, homeState) && homeCity ? `Near ${homeCity}` : `${group.member_count} members`} onJoin={handleJoin} />) : <Text style={[styles.muted, { color: palette.muted }]}>No additional communities are available right now.</Text>}</View></> : null}
 
-        <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{query.trim() ? 'Search Results' : 'Browse Communities'}</Text><Text style={styles.sectionCopy}>Join the people you want to keep hearing from.</Text></View>
-        <View style={styles.list}>{discover.length ? discover.map((group) => <CommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={handleJoin} />) : <Text style={styles.muted}>No communities match that search.</Text>}</View>
+        <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: palette.text }]}>{query.trim() ? 'Search Results' : 'Browse Communities'}</Text><Text style={[styles.sectionCopy, { color: palette.muted }]}>Join the people you want to keep hearing from.</Text></View>
+        <View style={styles.list}>{discover.length ? discover.map((group) => <CommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={handleJoin} palette={palette} />) : <Text style={[styles.muted, { color: palette.muted }]}>No communities match that search.</Text>}</View>
       </ScrollView>}
     </SafeAreaView>
   );

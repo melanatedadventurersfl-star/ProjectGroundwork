@@ -6,6 +6,8 @@ import type { AdventureSummary } from '../../src/adventures/types';
 import { getMemberTrips } from '../../src/member/api';
 import { getJourney } from '../../src/passport/api';
 import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
+import { useAuth } from '../../src/auth/AuthProvider';
+import { useGoTheme } from '../../src/theme/useGoTheme';
 
 type Item = { title: string; details: string; route: string; icon: AppIconName };
 const links: Item[] = [
@@ -15,6 +17,8 @@ const links: Item[] = [
   { title: 'Find communities', details: 'Explore people and groups to connect with', route: '/communities', icon: 'community' },
 ];
 export default function MyGoScreen() {
+  const { session } = useAuth();
+  const { palette, mode } = useGoTheme(session?.user.id);
   const [saved, setSaved] = useState<AdventureSummary[]>([]);
   const [trips, setTrips] = useState<number | null>(null);
   const [memories, setMemories] = useState<number | null>(null);
@@ -31,37 +35,37 @@ export default function MyGoScreen() {
     setRefreshing(false);
   }, []);
   useFocusEffect(useCallback(() => { void load(); }, [load]));
-  return <ScrollView style={styles.screen} contentContainerStyle={styles.content}
+  return <ScrollView style={[styles.screen, { backgroundColor: palette.background }]} contentContainerStyle={styles.content}
     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#D7B45A"/>}>
-    <View style={styles.hero}>
+    <View style={[styles.hero, { backgroundColor: mode === 'nature' ? '#244B39' : '#39314E' }]}>
       <Text style={styles.eyebrow}>YOUR GO MELANATED</Text>
       <Text style={styles.heroTitle}>My GO</Text>
       <Text style={styles.heroBody}>Your plans, saved discoveries, and experiences in one place.</Text>
     </View>
     <View style={styles.stats}>
-      <View style={styles.stat}><Text style={styles.statNumber}>{trips ?? '–'}</Text><Text style={styles.statLabel}>Trips & orders</Text></View>
-      <View style={styles.stat}><Text style={styles.statNumber}>{saved.length}</Text><Text style={styles.statLabel}>Saved events</Text></View>
-      <View style={styles.stat}><Text style={styles.statNumber}>{memories ?? '–'}</Text><Text style={styles.statLabel}>Trail memories</Text></View>
+      <View style={[styles.stat, { backgroundColor: palette.surface, borderColor: palette.border }]}><Text style={[styles.statNumber, { color: palette.text }]}>{trips ?? '–'}</Text><Text style={[styles.statLabel, { color: palette.muted }]}>Trips & orders</Text></View>
+      <View style={[styles.stat, { backgroundColor: palette.surface, borderColor: palette.border }]}><Text style={[styles.statNumber, { color: palette.text }]}>{saved.length}</Text><Text style={[styles.statLabel, { color: palette.muted }]}>Saved events</Text></View>
+      <View style={[styles.stat, { backgroundColor: palette.surface, borderColor: palette.border }]}><Text style={[styles.statNumber, { color: palette.text }]}>{memories ?? '–'}</Text><Text style={[styles.statLabel, { color: palette.muted }]}>Trail memories</Text></View>
     </View>
-    <Text style={styles.sectionTitle}>Your experience hub</Text>
-    {links.map(item => <Pressable key={item.route} style={styles.linkCard} onPress={() => router.push(item.route as never)}>
-      <View style={styles.icon}><AppIcon name={item.icon} color="#29583C" size={22}/></View>
-      <View style={styles.flex}><Text style={styles.linkTitle}>{item.title}</Text><Text style={styles.linkCopy}>{item.details}</Text></View>
-      <AppIcon name="chevron-forward" color="#58675D" size={20}/>
+    <Text style={[styles.sectionTitle, { color: palette.text }]}>Your experience hub</Text>
+    {links.map(item => <Pressable key={item.route} style={[styles.linkCard, { backgroundColor: palette.surface }]} onPress={() => router.push(item.route as never)}>
+      <View style={[styles.icon, { backgroundColor: palette.elevated }]}><AppIcon name={item.icon} color={palette.icon} size={22}/></View>
+      <View style={styles.flex}><Text style={[styles.linkTitle, { color: palette.text }]}>{item.title}</Text><Text style={[styles.linkCopy, { color: palette.muted }]}>{item.details}</Text></View>
+      <AppIcon name="chevron-forward" color={palette.icon} size={20}/>
     </Pressable>)}
     <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>Saved experiences</Text>
-      <Pressable onPress={() => router.push('/(tabs)/explore')}><Text style={styles.seeAll}>Discover →</Text></Pressable>
+      <Text style={[styles.sectionTitle, { color: palette.text }]}>Saved experiences</Text>
+      <Pressable onPress={() => router.push('/(tabs)/explore')}><Text style={[styles.seeAll, { color: palette.accent }]}>Discover →</Text></Pressable>
     </View>
-    {loading && <ActivityIndicator color="#244733"/>}
-    {!loading && !saved.length && <View style={styles.empty}><Text style={styles.emptyTitle}>Nothing saved yet</Text>
-      <Text style={styles.linkCopy}>Bookmark an adventure in Discover to find it here later.</Text></View>}
-    {saved.map(item => <Pressable key={item.id} style={styles.savedRow}
+    {loading && <ActivityIndicator color={palette.accent}/>}
+    {!loading && !saved.length && <View style={[styles.empty, { backgroundColor: palette.surface }]}><Text style={[styles.emptyTitle, { color: palette.text }]}>Nothing saved yet</Text>
+      <Text style={[styles.linkCopy, { color: palette.muted }]}>Bookmark an adventure in Discover to find it here later.</Text></View>}
+    {saved.map(item => <Pressable key={item.id} style={[styles.savedRow, { backgroundColor: palette.surface }]}
       onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: item.id } })}>
       {item.hero_image_url ? <Image source={{ uri: item.hero_image_url }} style={styles.thumb}/> : <View style={styles.thumbFallback}><AppIcon name="adventure" color="#6B8B6F" size={23}/></View>}
-      <View style={styles.flex}><Text style={styles.linkTitle} numberOfLines={2}>{item.title}</Text>
-        <Text style={styles.linkCopy} numberOfLines={1}>{item.category} · {item.city}, {item.state}</Text></View>
-      <AppIcon name="chevron-forward" color="#58675D" size={20}/>
+      <View style={styles.flex}><Text style={[styles.linkTitle, { color: palette.text }]} numberOfLines={2}>{item.title}</Text>
+        <Text style={[styles.linkCopy, { color: palette.muted }]} numberOfLines={1}>{item.category} · {item.city}, {item.state}</Text></View>
+      <AppIcon name="chevron-forward" color={palette.icon} size={20}/>
     </Pressable>)}
   </ScrollView>;
 }
