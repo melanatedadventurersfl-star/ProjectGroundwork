@@ -4,6 +4,7 @@ import { Alert, AppState, Image, Pressable, StyleSheet, Text, View } from 'react
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../auth/AuthProvider';
+import { useGoTheme } from '../theme/useGoTheme';
 import { TesterFeedbackButton } from '../feedback/TesterFeedbackButton';
 import { getUnreadNotificationCount, subscribeNotificationStateChanges } from '../notifications/api';
 import { AppIcon } from '../ui/AppIcon';
@@ -24,6 +25,8 @@ export function PersistentTopNav() {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const { session } = useAuth();
+  const { mode, isDark, palette } = useGoTheme(session?.user.id);
+  const navColor = mode === 'nature' ? isDark ? '#0F1713' : '#2E5440' : isDark ? '#24243C' : '#514665';
   const [unreadCount, setUnreadCount] = useState(0);
 
   const refreshUnreadCount = useCallback(async () => {
@@ -65,7 +68,7 @@ export function PersistentTopNav() {
   if (pathname === '/account-status' || pathname.startsWith('/host') || pathname.startsWith('/vendor')) return null;
 
   return (
-    <View style={[styles.shell, { paddingTop: Math.max(insets.top, 8) }]}>
+    <View style={[styles.shell, { paddingTop: Math.max(insets.top, 8), backgroundColor: navColor, borderBottomColor: palette.border }]}>
       <View style={styles.bar}>
         <Pressable accessibilityRole="button" accessibilityLabel="Melanated home" onPress={() => router.navigate('/(tabs)' as never)} hitSlop={8} style={styles.logoButton}>
           <Image source={require('../../assets/go-melanated-logo.png')} style={styles.logo} resizeMode="contain" />
@@ -79,6 +82,7 @@ export function PersistentTopNav() {
             onPress={() => session ? router.navigate('/notifications' as never) : promptForAccount('Notifications')}
             style={({ pressed }) => [
               styles.iconButton,
+              { backgroundColor: navColor, borderColor: palette.border },
               hasUnreadNotifications && styles.notificationButtonUnread,
               pressed && styles.iconButtonPressed,
             ]}
@@ -97,7 +101,7 @@ export function PersistentTopNav() {
             accessibilityRole="button"
             accessibilityLabel="Menu"
             onPress={() => session ? router.navigate('/(tabs)/menu' as never) : promptForAccount('Menu')}
-            style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+            style={({ pressed }) => [styles.iconButton, { backgroundColor: navColor, borderColor: palette.border }, pressed && styles.iconButtonPressed]}
           >
             <AppIcon name="menu" color="#F6F4EE" size={21} />
           </Pressable>
