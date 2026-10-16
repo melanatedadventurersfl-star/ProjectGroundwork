@@ -95,7 +95,7 @@ function ConversationCard({ post, group, now, palette }: { post: CommunityPost; 
         <View style={styles.avatar}>{post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{initials(post.author_name)}</Text>}</View>
         <Text style={[styles.authorName, { color: palette.text }]}>{post.author_name}</Text>
       </Pressable>
-      {post.body ? <Text style={[styles.conversationText, { color: palette.text }]}> numberOfLines={4}>{post.body}</Text> : null}
+      {post.body ? <Text style={[styles.conversationText, { color: palette.text }]} numberOfLines={4}>{post.body}</Text> : null}
       {media ? <Image source={{ uri: media }} style={styles.conversationImage} resizeMode="cover" /> : null}
       <View style={styles.engagement}><PostEngagementBar postId={post.id} initialReactionCount={post.reaction_count || 0} commentCount={post.comment_count || 0} /></View>
     </Pressable>
@@ -109,8 +109,8 @@ function CommunityRow({ group, latest, now, palette }: { group: CommunityGroup; 
     <Pressable style={({ pressed }) => [styles.communityRow, { backgroundColor: palette.surface }, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/groups/[id]', params: { id: group.id } })}>
       <View style={styles.communityImageWrap}>{cover ? <Image source={{ uri: cover }} style={styles.communityImage} /> : <Text style={styles.communityInitials}>{initials(group.name)}</Text>}</View>
       <View style={styles.flex}>
-        <Text style={[styles.communityName, { color: palette.text }]}> numberOfLines={1}>{group.name}</Text>
-        <Text style={[styles.communityOwner, { color: palette.muted }]}> numberOfLines={1}>{communityOwnershipLabel(group)}</Text>
+        <Text style={[styles.communityName, { color: palette.text }]} numberOfLines={1}>{group.name}</Text>
+        <Text style={[styles.communityOwner, { color: palette.muted }]} numberOfLines={1}>{communityOwnershipLabel(group)}</Text>
         <Text style={[styles.communityActivity, Boolean(latest) && styles.communityActivityLive, { color: palette.muted }]} numberOfLines={1}>{status}</Text>
       </View>
       <Ionicons name="chevron-forward" size={18} color={GOLD} />
