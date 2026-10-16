@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, Image, Pressable, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
@@ -17,10 +17,10 @@ const STARS = [8, 23, 39, 55, 69, 81, 94] as const;
 const RAIN = Array.from({ length: 16 }, (_, index) => index);
 
 function TrailheadAtmosphere({ weather, phase, mode }: { weather: WeatherTheme; phase: DayPhase; mode: 'nature' | 'night' }) {
-  const haze = useRef(new Animated.Value(0)).current;
-  const light = useRef(new Animated.Value(0)).current;
-  const rainfall = useRef(new Animated.Value(0)).current;
-  const flash = useRef(new Animated.Value(0)).current;
+  const [haze] = useState(() => new Animated.Value(0));
+  const [light] = useState(() => new Animated.Value(0));
+  const [rainfall] = useState(() => new Animated.Value(0));
+  const [flash] = useState(() => new Animated.Value(0));
   const [reduceMotion, setReduceMotion] = useState(false);
   const storm = weather === 'storm';
   const rainy = weather === 'rain' || storm;
