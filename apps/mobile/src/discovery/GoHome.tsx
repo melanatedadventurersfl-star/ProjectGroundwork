@@ -192,6 +192,7 @@ export default function GoHome() {
   const [trailPreview, setTrailPreview] = useState<{ uri: string; adventureId: string } | null>(null);
   const [profile, setProfile] = useState({ name: '', username: '', city: '', state: '', coverUrl: null as string | null, interests: [] as string[] });
   const [loading, setLoading] = useState(true);
+  const [sceneInitialized, setSceneInitialized] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mood, setMood] = useState<AdventureMood | null>(null);
@@ -238,6 +239,8 @@ export default function GoHome() {
     next[target] = current;
     setHomeSections(next);
   }
+  useEffect(() => { setSceneInitialized(false); }, [session?.user.id]);
+
   const load = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true);
     else setLoading(true);
@@ -287,6 +290,7 @@ export default function GoHome() {
     } else {
       setLocalWeather(null);
     }
+    setSceneInitialized(true);
     setLoading(false);
     setRefreshing(false);
   }, [session?.user.id]);
@@ -534,10 +538,15 @@ export default function GoHome() {
         style={[styles.modeButton, mode === value && { backgroundColor: value === 'nature' ? '#D6F0CC' : '#EAD8F7' }]}>
         <Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{value === 'nature' ? '🌿  Nature' : '🌆  Nights'}</Text>
       </Pressable>)}</View>
-    <GoTrailheadScene displayName={memberName} greeting={greetingFor(new Date(now).getHours())}
-      rank={effectiveRank} badges={memberBadges} weather={localWeather}
-      homeCity={profile.city} homeState={profile.state} coverUrl={profile.coverUrl}
-      nightImage={nightPhoto} mode={mode}/>
+    {sceneInitialized ?
+      <GoTrailheadScene displayName={memberName} greeting={greetingFor(new Date(now).getHours())}
+        rank={effectiveRank} badges={memberBadges} weather={localWeather}
+        homeCity={profile.city} homeState={profile.state}
+        nightImage={nightPhoto} mode={mode}/> :
+      <View style={[styles.scenePlaceholder, { backgroundColor: primary }]}>
+        <ActivityIndicator color={accent}/>
+        <Text style={styles.sceneLoadingText}>Preparing your Trailhead...</Text>
+      </View>}
     <Pressable accessibilityRole="button" style={styles.nextAdventure}
       onPress={() => actionOuting ? router.push({ pathname: '/local-events/[id]', params: { id: actionOuting.id } }) : actionTrip ? router.push({ pathname: '/adventures/[id]', params: { id: actionTrip.id } }) : goDiscover(mode)}>
       <View style={styles.nextIcon}><AppIcon name={isLive ? 'map' : hasBooking ? 'calendar' : 'explore'} color={primary} size={21}/></View>
@@ -668,6 +677,8 @@ const styles = StyleSheet.create({
   nightScreen: { backgroundColor: '#F6F3F9' },
   content: { paddingHorizontal: 16, paddingTop: 11, paddingBottom: 32, width: '100%', maxWidth: 970, alignSelf: 'center' },
   flex: { flex: 1 },
+  scenePlaceholder: { minHeight: 302, borderRadius: 21, alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 7 },
+  sceneLoadingText: { color: '#E3EDE1', fontWeight: '800', fontSize: 12 },
   brandBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9, minHeight: 40 },
   nextAdventure: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E9E2', borderRadius: 17, marginTop: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 11 },
   nextIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: '#E6F1E2', alignItems: 'center', justifyContent: 'center' },
