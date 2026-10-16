@@ -559,7 +559,7 @@ export default function GoHome() {
       <GoTrailheadScene displayName={memberName} greeting={greetingFor(new Date(now).getHours())}
         rank={effectiveRank} badges={memberBadges} weather={localWeather}
         homeCity={profile.city} homeState={profile.state}
-        nightImage={nightPhoto} mode={mode}/> :
+        nightImage={nightPhoto} mode={mode} appearance={appearance}/> :
       <View style={[styles.scenePlaceholder, { backgroundColor: palette.elevated }]}>
         <ActivityIndicator color={accent}/>
         <Text style={styles.sceneLoadingText}>Preparing your Trailhead...</Text>
