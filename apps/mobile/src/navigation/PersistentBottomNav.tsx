@@ -4,6 +4,7 @@ import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../auth/AuthProvider';
+import { useGoTheme } from '../theme/useGoTheme';
 import { getProfileAvatarUrl, subscribeProfileAvatar } from '../member/api';
 import { AppIcon, type AppIconName } from '../ui/AppIcon';
 
@@ -40,6 +41,8 @@ export function PersistentBottomNav() {
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
   const userId = session?.user.id;
+  const { mode, isDark, palette } = useGoTheme(userId);
+  const navColor = mode === 'nature' ? isDark ? '#0F1713' : '#2E5440' : isDark ? '#24243C' : '#514665';
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const showAskGo = pathname.startsWith('/trail-guide') && pathname !== '/trail-guide/ask';
 
@@ -70,7 +73,7 @@ export function PersistentBottomNav() {
   if (pathname === '/account-status') return null;
 
   return (
-    <View style={[styles.shell, { paddingBottom: Math.max(insets.bottom, 6) }]}>
+    <View style={[styles.shell, { paddingBottom: Math.max(insets.bottom, 6), backgroundColor: navColor, borderTopColor: palette.border }]}>
       {showAskGo ? (
         <Pressable
           accessibilityRole="button"
@@ -91,7 +94,7 @@ export function PersistentBottomNav() {
       <View style={styles.bar}>
         {items.map((item) => {
           const active = item.isActive(pathname);
-          const color = active ? '#D7B45A' : '#E7DFCF';
+          const color = active ? '#F2D68B' : '#F0EDF1';
           const showAvatar = item.label === 'Profile' && Boolean(session && avatarUrl);
           return (
             <Pressable
@@ -115,7 +118,7 @@ export function PersistentBottomNav() {
               ) : (
                 <AppIcon name={item.icon} color={color} size={24} />
               )}
-              <Text style={[styles.label, active && styles.labelActive]}>{item.label}</Text>
+              <Text style={[styles.label, active && styles.labelActive, !active && { color: '#F0EDF1' }]}>{item.label}</Text>
             </Pressable>
           );
         })}
