@@ -80,12 +80,12 @@ function TrailheadAtmosphere({ weather, phase, mode }: { weather: WeatherTheme; 
       opacity: reduceMotion ? 0.055 : light.interpolate({ inputRange: [0, 1], outputRange: [0.025, 0.10] }),
     }]} />
     {afterDark && STARS.map((left, index) => <Animated.View key={'star-' + index}
-      style={[styles.star, { left: left + '%', top: 8 + (index % 3) * 11,
+      style={[styles.star, { left: `${left}%` as `${number}%`, top: 8 + (index % 3) * 11,
         opacity: reduceMotion ? 0.35 : light.interpolate({ inputRange: [0, 1], outputRange: [0.16, 0.50] }),
       }]} />)}
     {rainy && RAIN.map(index => <Animated.View key={'rain-' + index}
       style={[styles.raindrop, {
-        left: ((index * 17.7) % 96) + '%',
+        left: `${(index * 17.7) % 96}%` as `${number}%`,
         top: ((index * 31) % 145) - 34,
         height: 11 + index % 12,
         opacity: storm ? 0.39 : 0.25,
@@ -106,11 +106,10 @@ type Props = {
   mode: 'nature' | 'night';
   homeCity: string;
   homeState: string;
-  coverUrl?: string | null;
   nightImage?: string | null;
 };
 
-export function GoTrailheadScene({ displayName, greeting, rank, badges, weather, mode, homeCity, homeState, coverUrl, nightImage }: Props) {
+export function GoTrailheadScene({ displayName, greeting, rank, badges, weather, mode, homeCity, homeState, nightImage }: Props) {
   const [imageFailed, setImageFailed] = useState(false);
   const [sceneTime, setSceneTime] = useState(() => new Date());
   useEffect(() => {
@@ -120,9 +119,12 @@ export function GoTrailheadScene({ displayName, greeting, rank, badges, weather,
   const weatherTheme = weather ? normalizeWeather(weather.current.condition.text) : 'clear';
   // Nights includes city experiences throughout the day, not just evening events.
   const phase = dayPhaseFor(weather, sceneTime);
+  // A profile cover remains saved for the member profile. It must not silently
+  // replace the living Trailhead scene after the profile request completes.
+  // Future user-selected static covers can opt in explicitly.
   const background: ImageSourcePropType = mode === 'night'
-    ? nightImage ? { uri: nightImage } : coverUrl ? { uri: coverUrl } : FALLBACK_CITY
-    : coverUrl ? { uri: coverUrl } : backgroundFor(rank, weatherTheme, phase);
+    ? nightImage ? { uri: nightImage } : FALLBACK_CITY
+    : backgroundFor(rank, weatherTheme, phase);
   const fallback = mode === 'night' ? FALLBACK_CITY : FALLBACK_NATURE;
   const source: ImageSourcePropType = imageFailed ? fallback : background;
   const accent = mode === 'night' ? '#E0B7F9' : rankThemes[rank].soft;
@@ -131,7 +133,7 @@ export function GoTrailheadScene({ displayName, greeting, rank, badges, weather,
   const temp = weather && Number.isFinite(weather.current.temp_f) ? Math.round(weather.current.temp_f) + '°' : null;
   const badgePreview = badges.slice(0, 3);
 
-  useEffect(() => { setImageFailed(false); }, [coverUrl, nightImage, rank, mode, weatherTheme, phase]);
+  useEffect(() => { setImageFailed(false); }, [nightImage, rank, mode, weatherTheme, phase]);
 
   return (
     <View style={styles.wrapper}>

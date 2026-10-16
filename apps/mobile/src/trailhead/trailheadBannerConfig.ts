@@ -126,10 +126,24 @@ function legacyRankBackground(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSour
 }
 
 function adventurerBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
-  // Keep Adventurer on its own rank art instead of letting it disappear into the
-  // generic fallback path. The atmosphere/weather layers still react live while
-  // dedicated Adventurer variants are added to the native asset bundle.
-  return legacyRankBackground('Adventurer',w,p);
+  // Only one dedicated Adventurer image is available (evening). A fixed image
+  // at every hour disguises the actual weather and time of day.
+  if (p === 'evening' && w === 'clear') return legacyRankBackground('Adventurer',w,p);
+  return trailblazerBackground(w,p);
+}
+
+function summitSeekerBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
+  // The legacy Summit Seeker artwork contains a prominent moon. Keep it for
+  // clear nights rather than showing a moon against a bright morning forecast.
+  if (p === 'night' && w === 'clear') return legacyRankBackground('Summit Seeker',w,p);
+  return pathfinderBackground(w,p);
+}
+
+function ascendantBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
+  // Until this rank has weather-specific assets, reuse an accurate daytime scene.
+  // Retain its unique snow/night artwork only under matching conditions.
+  if (p === 'night' && w === 'snow') return legacyRankBackground('Ascendant',w,p);
+  return trailblazerBackground(w,p);
 }
 
 export function backgroundFor(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSourcePropType{
@@ -137,5 +151,6 @@ export function backgroundFor(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSour
   if(rank==='Pathfinder') return pathfinderBackground(w,p);
   if(rank==='Trailblazer') return trailblazerBackground(w,p);
   if(rank==='Adventurer') return adventurerBackground(w,p);
-  return legacyRankBackground(rank,w,p);
+  if(rank==='Summit Seeker') return summitSeekerBackground(w,p);
+  return ascendantBackground(w,p);
 }
