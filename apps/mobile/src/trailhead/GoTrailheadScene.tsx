@@ -21,7 +21,7 @@ function TrailheadAtmosphere({ weather, phase, mode }: { weather: WeatherTheme; 
   const light = useRef(new Animated.Value(0)).current;
   const rainfall = useRef(new Animated.Value(0)).current;
   const flash = useRef(new Animated.Value(0)).current;
-  const [reduceMotion, setReduceMotion] = useState(true);
+  const [reduceMotion, setReduceMotion] = useState(false);
   const storm = weather === 'storm';
   const rainy = weather === 'rain' || storm;
   const afterDark = phase === 'night';
@@ -29,11 +29,15 @@ function TrailheadAtmosphere({ weather, phase, mode }: { weather: WeatherTheme; 
 
   useEffect(() => {
     let alive = true;
-    void AccessibilityInfo.isReduceMotionEnabled().then(value => {
-      if (alive) setReduceMotion(value);
-    }).catch(() => { if (alive) setReduceMotion(true); });
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => { alive = false; subscription.remove(); };
+    if (typeof AccessibilityInfo.isReduceMotionEnabled === 'function') {
+      void AccessibilityInfo.isReduceMotionEnabled().then(value => {
+        if (alive) setReduceMotion(value);
+      }).catch(() => { /* Keep the ambient effects subtle when a browser does not expose this setting. */ });
+    }
+    const subscription = typeof AccessibilityInfo.addEventListener === 'function'
+      ? AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion)
+      : null;
+    return () => { alive = false; subscription?.remove(); };
   }, []);
 
   useEffect(() => {
