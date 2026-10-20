@@ -157,7 +157,7 @@ export default function SignUpScreen() {
                     style={styles.passwordInput}
                     value={password}
                   />
-                  <Pressable hitSlop={10} onPress={() => setShowPassword((value) => !value)}>
+                  <Pressable accessibilityLabel={showPassword ? 'Hide password' : 'Show password'} accessibilityRole="button" hitSlop={10} onPress={() => setShowPassword((value) => !value)}>
                     <Text style={styles.visibilityText}>{showPassword ? 'Hide' : 'Show'}</Text>
                   </Pressable>
                 </View>
@@ -175,7 +175,7 @@ export default function SignUpScreen() {
                     style={styles.passwordInput}
                     value={confirmPassword}
                   />
-                  <Pressable hitSlop={10} onPress={() => setShowConfirmPassword((value) => !value)}>
+                  <Pressable accessibilityLabel={showConfirmPassword ? 'Hide password' : 'Show password'} accessibilityRole="button" hitSlop={10} onPress={() => setShowConfirmPassword((value) => !value)}>
                     <Text style={styles.visibilityText}>{showConfirmPassword ? 'Hide' : 'Show'}</Text>
                   </Pressable>
                 </View>

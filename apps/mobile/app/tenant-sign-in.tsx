@@ -10,6 +10,7 @@ export default function TenantSignInScreen() {
   const appSlug = typeof slug === 'string' ? slug : '';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -40,7 +41,12 @@ export default function TenantSignInScreen() {
 
       <View style={styles.card}>
         <TextInput value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="Email" placeholderTextColor="#6E7A72" style={styles.input} />
-        <TextInput value={password} onChangeText={setPassword} secureTextEntry placeholder="Password" placeholderTextColor="#6E7A72" style={styles.input} onSubmitEditing={() => void signIn()} />
+        <View style={styles.passwordRow}>
+          <TextInput value={password} onChangeText={setPassword} secureTextEntry={!showPassword} placeholder="Password" placeholderTextColor="#6E7A72" style={styles.passwordInput} onSubmitEditing={() => void signIn()} />
+          <Pressable accessibilityLabel={showPassword ? 'Hide password' : 'Show password'} accessibilityRole="button" hitSlop={10} onPress={() => setShowPassword((value) => !value)} style={styles.visibilityButton}>
+            <Text style={styles.show}>{showPassword ? 'Hide' : 'Show'}</Text>
+          </Pressable>
+        </View>
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Pressable disabled={busy || !appSlug || !email.trim() || !password} style={[styles.button, (busy || !appSlug || !email.trim() || !password) && styles.buttonDisabled]} onPress={() => void signIn()}>
           {busy ? <ActivityIndicator color="#101510" /> : <Text style={styles.buttonText}>Enter app</Text>}
@@ -60,6 +66,10 @@ const styles = StyleSheet.create({
   subtitle: { color: '#98A69E', fontSize: 12, lineHeight: 18, marginTop: 5 },
   card: { marginTop: 22, borderRadius: 20, borderWidth: 1, borderColor: '#304037', backgroundColor: '#151E18', padding: 16, gap: 11 },
   input: { minHeight: 52, borderRadius: 14, borderWidth: 1, borderColor: '#3A4940', backgroundColor: '#0C130F', color: '#FFF8E8', paddingHorizontal: 14, fontSize: 14 },
+  passwordRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1, borderColor: '#3A4940', backgroundColor: '#0C130F' },
+  passwordInput: { flex: 1, minHeight: 50, color: '#FFF8E8', paddingHorizontal: 14, fontSize: 14 },
+  visibilityButton: { minHeight: 44, minWidth: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  show: { color: '#D7B45A', fontSize: 10, fontWeight: '900' },
   error: { color: '#F0A199', fontSize: 10.5, lineHeight: 15 },
   button: { minHeight: 50, borderRadius: 14, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   buttonDisabled: { opacity: 0.45 },

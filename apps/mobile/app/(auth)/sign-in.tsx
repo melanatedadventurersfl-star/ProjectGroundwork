@@ -161,6 +161,7 @@ export default function SignInScreen() {
                   />
                   <Pressable
                     accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                    accessibilityRole="button"
                     hitSlop={10}
                     onPress={() => setShowPassword((value) => !value)}
                   >
