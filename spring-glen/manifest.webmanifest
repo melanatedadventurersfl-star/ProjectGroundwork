@@ -1,0 +1,8 @@
+{
+  "name": "Spring Glen Field Operations",
+  "short_name": "Spring Glen",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f5f2ec",
+  "theme_color": "#142a43"
+}
