@@ -7,6 +7,7 @@ on:
       - feature/workout-mvp
       - feature/workout-phase-3
     paths:
+      - 'spring-glen/**'
       - 'apps/member-app-prototype/**'
       - 'apps/mobile/**'
       - 'package.json'
@@ -111,6 +112,9 @@ jobs:
           # Publish a dedicated workout route so the current build is not confused with older /workout deployments.
           rm -rf _site/goworkout
           cp -R _site/workout _site/goworkout
+          # Add Spring Glen as an isolated route without replacing existing web apps.
+          mkdir -p _site/spring-glen
+          cp -R spring-glen/. _site/spring-glen/
           touch _site/.nojekyll
 
       - name: Configure GitHub Pages
